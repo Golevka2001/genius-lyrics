@@ -98,68 +98,6 @@ export const normalize = (value: string) =>
 		.replace(/[“”]/g, "")
 		.replace(/[^a-z0-9\n]/g, "");
 
-/**
- * Match a Genius annotation fragment against one or more lyric lines.
- *
- * A referent fragment is not a single line: Genius anchors some notes to a
- * phrase that spans a line break, so "Obie Trice, real name, no gimmicks\n
- * Ra—" is one fragment covering two lyric lines. Comparing against a single
- * line misses those, which is most of them, so the caller concatenates
- * windows instead.
- *
- * Genius also lowercases, strips punctuation and drops curly apostrophes, so
- * plain equality fails often enough to matter. Containment on normalized text
- * is what actually holds.
- */
-export const fragmentMatchesLine = (fragment: string, line: string): boolean => {
-	const a = normalize(fragment);
-	const b = normalize(line);
-	if (!a || !b) return false;
-	return a === b || a.includes(b) || b.includes(a);
-};
-
-/**
- * Attach annotations to the lines Genius anchored them to.
- *
- * The referent ids come from parseLyricLines, so this is a lookup rather than
- * a guess. Text matching is only a fallback for lines whose anchors were
- * stripped, and it deliberately refuses to guess when several lines tie.
- */
-export const attachAnnotations = (
-	lines: LyricLine[],
-	annotations: Map<string, Annotation>,
-): Array<{ line: LyricLine; index: number; notes: Annotation[] }> => {
-	const result: Array<{ line: LyricLine; index: number; notes: Annotation[] }> = [];
-
-	lines.forEach((line, index) => {
-		const notes = line.referentIds
-			.map((id) => annotations.get(id))
-			.filter((note): note is Annotation => Boolean(note?.text));
-		if (notes.length > 0) result.push({ line, index, notes });
-	});
-
-	return result;
-};
-
-/**
- * Fallback placement for a line whose anchor is missing.
- *
- * Only used when a note has no anchor at all; returns -1 rather than guessing
- * so an unplaceable note is dropped instead of landing on the wrong line.
- */
-export const findFragmentStart = (lines: string[], fragment: string, maxSpan = 3): number => {
-	const needle = normalize(fragment);
-	if (!needle) return -1;
-
-	for (let span = 1; span <= maxSpan; span++) {
-		for (let start = 0; start + span <= lines.length; start++) {
-			const window = lines.slice(start, start + span).join(" ");
-			if (fragmentMatchesLine(needle, window)) return start;
-		}
-	}
-	return -1;
-};
-
 export interface Annotation {
 	/** Referent id, taken from the first numeric path segment. */
 	referentId: string;
@@ -248,21 +186,6 @@ export const parseReferent = (payload: unknown, referentId: string): Annotation 
 		authors,
 		votes: typeof votes === "number" ? votes : undefined,
 	};
-};
-
-/**
- * Extract referent ids from a Genius lyrics page.
- *
- * Used only to discover which annotations exist at all; placement comes from
- * the per-line anchors in parseLyricLines, because an id found anywhere on the
- * page says nothing about which line it belongs to.
- */
-export const extractReferentIds = (html: string): string[] => {
-	const ids = new Set<string>();
-	const pattern = /href="\/(\d{3,})\//g;
-	let match: RegExpExecArray | null;
-	while ((match = pattern.exec(html)) !== null) ids.add(match[1]);
-	return [...ids];
 };
 
 export interface SongHit {
@@ -378,7 +301,7 @@ export interface GeniusSong {
  * Note what this does NOT return: lyrics. Genius keeps lyrics out of this
  * payload entirely — description.dom holds the editor's prose. The actual
  * lyric lines only exist in the rendered page, so callers need
- * extractLyricLines() for those.
+ * parseLyricLines() for those.
  */
 export const parseSong = (payload: unknown): GeniusSong | null => {
 	const song = (payload as { response?: { song?: Record<string, unknown> } })?.response?.song;
@@ -636,39 +559,6 @@ const findContainerEnd = (html: string, start: number): number => {
 	return -1;
 };
 
-/**
- * Pull plain lyric lines out of a rendered Genius page.
- *
- * Returns one array per translation. Use parseLyricLines instead when the
- * annotations matter, since only that one keeps each line's anchors.
- */
-export const extractLyricLines = (html: string): string[][] => {
-	const blocks: string[][] = [];
-	const openings: number[] = [];
-	const openPattern = /<div[^>]*data-lyrics-container="true"[^>]*>/g;
-	let open: RegExpExecArray | null;
-	while ((open = openPattern.exec(html)) !== null) openings.push(open.index + open[0].length);
-
-	for (const start of openings) {
-		const end = findContainerEnd(html, start);
-		if (end < 0) continue;
-
-		const lines = html
-			.slice(start, end)
-			.replace(/<br\s*\/?>/gi, "\n")
-			.replace(/<[^>]+>/g, "")
-			.split("\n")
-			.map((line) => decodeEntities(line).replace(/\s+/g, " ").trim())
-			.filter((line) => line.length > 0);
-
-		if (lines.length === 0) continue;
-		const averageLength = lines.reduce((sum, line) => sum + line.length, 0) / lines.length;
-		if (lines.length < 4 || averageLength > 80) continue;
-		blocks.push(lines);
-	}
-	return blocks;
-};
-
 export interface SpotifyLyrics {
 	synced: boolean;
 	lines: Array<{ text: string; startTimeMs?: number }>;
@@ -690,15 +580,6 @@ export const parseSpotifyLyrics = (payload: unknown): SpotifyLyrics | null => {
 		})),
 	};
 };
-
-/**
- * Attach annotations to lyric lines.
- *
- * Each annotation is claimed by the first still-unclaimed line it matches, so
- * a repeated chorus does not stack every annotation on one line.
- */
-export const alignAnnotations = (lines: LyricLine[], annotations: Map<string, Annotation>) =>
-	attachAnnotations(lines, annotations);
 
 /**
  * A paragraph inside an annotation, kept apart from the text.

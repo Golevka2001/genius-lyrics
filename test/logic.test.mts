@@ -2,19 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
-	attachAnnotations,
 	parseNoteBlocks,
 	domToText,
-	extractLyricLines,
-	extractReferentIds,
-	findFragmentStart,
-	fragmentMatchesLine,
 	parseLyricLines,
 	parseReferent,
 	parseSearchResults,
 	parseSong,
 	parseSpotifyLyrics,
-	type Annotation,
 } from "../logic.ts";
 
 const lyricsPage = () => readFileSync(new URL("./fixtures/lyrics-page.html", import.meta.url), "utf8");
@@ -128,43 +122,23 @@ test("parseLyricLines skips the UI panel and the plain-text duplicate", () => {
 	assert.ok(lines.some((line) => line.referentIds.length > 0), "expected the annotated copy");
 });
 
-test("extractLyricLines decodes entities and reads plain lyrics", () => {
+test("parseLyricLines decodes entities and collapses whitespace", () => {
 	const html = `<div data-lyrics-container="true">
 		One two three four<br>
-		&#x27;Cause it feels so empty &amp; cold<br>
-		Five six seven eight<br>
-		Nine ten eleven twelve
+		<a href="/166763/Eminem-without-me/One-two-three-four">&#x27;Cause it feels so empty &amp; cold</a><br>
+		Five six seven eight
 	</div>`;
-	const blocks = extractLyricLines(html);
-	assert.deepEqual(blocks[0], [
-		"One two three four",
-		"'Cause it feels so empty & cold",
-		"Five six seven eight",
-		"Nine ten eleven twelve",
-	]);
+	const lines = parseLyricLines(html);
+	assert.deepEqual(
+		lines.map((line) => line.text),
+		["One two three four", "'Cause it feels so empty & cold", "Five six seven eight"],
+	);
 });
-
 test("parseLyricLines requires anchors, so an unannotated page yields nothing", () => {
 	// Annotations are the whole point of this parser: with no anchors there is
-	// nothing to attach, and extractLyricLines is the plain-text counterpart.
+	// nothing to attach.
 	const html = `<div data-lyrics-container="true">Just plain lyrics<br>with no anchors<br>x<br>y</div>`;
 	assert.deepEqual(parseLyricLines(html), []);
-});
-
-test("extractLyricLines finds every qualifying block", () => {
-	const blocks = extractLyricLines(lyricsPage());
-	assert.ok(blocks.length >= 1);
-	assert.ok(blocks[0].length > 20);
-});
-
-test("extractReferentIds finds numeric path segments", () => {
-	const html = `
-		<a href="/166763/Eminem-without-me/Obie-trice">x</a>
-		<a href="https://genius.com/artists/Thom-yorke">z</a>
-		<a href="/42867/Creatures/The-Beatles">dup</a>
-		<a href="/42867/Creatures/The-Beatles-again">dup</a>
-	`;
-	assert.deepEqual(extractReferentIds(html), ["166763", "42867"]);
 });
 
 test("parseLyricLines is linear in page size, not quadratic", () => {
@@ -176,44 +150,6 @@ test("parseLyricLines is linear in page size, not quadratic", () => {
 	parseLyricLines(html);
 	const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
 	assert.ok(elapsedMs < 500, `parser took ${elapsedMs.toFixed(0)}ms`);
-});
-
-test("fragmentMatchesLine tolerates Genius' de-accented fragments", () => {
-	assert.ok(fragmentMatchesLine("Conect dnt run dry we got it all day", "Conect, dn't run dry"));
-	assert.ok(fragmentMatchesLine("Creep", "creep"));
-	assert.ok(!fragmentMatchesLine("totally different words", "Creep"));
-	assert.ok(!fragmentMatchesLine("", "Creep"));
-});
-
-test("findFragmentStart spans a line break", () => {
-	const lines = ["Obie Trice, real name", "Ra— slick like a freshly sharpened knife"];
-	assert.equal(findFragmentStart(lines, "Obie Trice, real name\n Ra—"), 0);
-	assert.equal(findFragmentStart(lines, "totally absent text here"), -1);
-});
-
-test("attachAnnotations places notes by anchor, not by text", () => {
-	const notes = new Map<string, Annotation>([
-		["1", { referentId: "1", fragment: "anything", text: "note one", classification: "accepted", source: "referent", authors: [], blocks: [] }],
-		["2", { referentId: "2", fragment: "unrelated", text: "note two", classification: "unreviewed", source: "referent", authors: [], blocks: [] }],
-	]);
-	// Line 1 carries anchor "1" even though line 0's text matches note 2's
-	// fragment better; the anchor must win.
-	const lines = [
-		{ text: "So, everybody, just follow me", referentIds: [] },
-		{ text: "Now, this looks like a job for me", referentIds: ["1"] },
-	];
-	const placed = attachAnnotations(lines, notes);
-	assert.equal(placed.length, 1);
-	assert.equal(placed[0].index, 1);
-	assert.deepEqual(placed[0].notes.map((n) => n.referentId), ["1"]);
-});
-
-test("attachAnnotations drops notes with no body", () => {
-	const lines = [{ text: "a line", referentIds: ["1"] }];
-	const notes = new Map<string, Annotation>([
-		["1", { referentId: "1", fragment: "a line", text: "", classification: "unreviewed", source: "none", authors: [], blocks: [] }],
-	]);
-	assert.equal(attachAnnotations(lines, notes).length, 0);
 });
 
 test("parseSpotifyLyrics reads synced lines and the timing axis", () => {
