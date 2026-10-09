@@ -493,7 +493,7 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 	}
 
 	return lines;
-};;
+};
 const collectReferentIds = (fragment: string): string[] => {
 	const ids: string[] = [];
 	REFERENT_HREF.lastIndex = 0;
