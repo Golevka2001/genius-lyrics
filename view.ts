@@ -18,19 +18,10 @@ export interface LineView {
 	annotated: boolean;
 	/** Spotify's start offset, when a synced axis was found. */
 	startTimeMs?: number;
-	/**
-	 * True on the line that opens the note, false on the lines it continues over.
-	 * The span is highlighted as one region, so any line in it can open the note.
-	 */
+	/** True where the note opens, false on the lines it continues over. */
 	noteStart?: boolean;
 	/** A blank line Genius puts before a section header. */
 	blank?: boolean;
-	/**
-	 * Ids of every note whose highlighted region covers this line, whether or not
-	 * the line itself opens one. Hovering any of them lights the whole run, which
-	 * is what makes a spanning note read as one marked region.
-	 */
-	spanIds?: string[];
 }
 
 export interface TrackView {
@@ -117,29 +108,10 @@ export const buildTrackView = ({
 }: BuildInput): TrackView => {
 	const timed = applyTiming(lines, timing);
 
-	// A spanning note covers a run of consecutive lines, so the run's ids are
-	// collected per line and shared with the lines that continue it. This is what
-	// lets hovering any line of a multi-line note light all of it.
-	const views: LineView[] = [];
-	const spanOf = (index: number): string[] => {
-		const own = views[index]?.notes.map((note) => note.referentId) ?? [];
-		if (own.length > 0) return own;
-
-		// A line with no note of its own is a continuation only when the parser said
-		// so. It attaches the anchor it inherited to every line inside a span, so
-		// "no note" alone cannot tell a continuation from an ordinary lyric that
-		// merely follows one, and treating them alike lights the wrong region.
-		if (views[index]?.noteStart !== false) return own;
-
-		// Step over a blank spacer, which is layout rather than a line of the song.
-		let opener = views[index - 1];
-		if (opener?.blank) opener = views[index - 2];
-		return opener?.notes.map((note) => note.referentId) ?? own;
-	};
-
-	views.push(...timed.map((line, index) => {
-		// Every line of a spanning anchor resolves to the same note, so each of them
-		// can show it; which one opens the popup is decided by noteStart.
+	// Every line of a spanning anchor carries the same referent id, so this one
+	// lookup attaches the note and marks the lines that share it at once — which
+	// is what lets hovering any line of a multi-line note light all of it.
+	const views: LineView[] = timed.map((line, index) => {
 		const attached = line.referentIds
 			.map((id) => notes.get(id))
 			.filter((note): note is Annotation => Boolean(note?.text));
@@ -153,13 +125,7 @@ export const buildTrackView = ({
 			noteStart: line.noteStart,
 			blank: line.blank,
 		};
-	}));
-
-	// Second pass: the opener of a span is known only once every line exists, so a
-	// continuation line can be told which region it belongs to.
-	for (const [index, view] of views.entries()) {
-		view.spanIds = spanOf(index);
-	}
+	});
 
 	const annotatedCount = views.filter((view) => view.annotated).length;
 

@@ -268,7 +268,7 @@ const Line = ({
 			h("span", {
 				className: "gl-text",
 				onClick: view.annotated ? onToggle : undefined,
-				onMouseEnter: view.annotated ? () => onHover(view.spanIds ?? []) : undefined,
+				onMouseEnter: view.annotated ? () => onHover(view.notes.map((note) => note.referentId)) : undefined,
 				onMouseLeave: view.annotated ? () => onHover(null) : undefined,
 				title: view.annotated ? "Show annotation" : undefined,
 				children: view.text,
@@ -379,7 +379,7 @@ const Panel = () => {
 					view,
 					isActive: view.index === activeIndex,
 					isOpen: openLine === view.index,
-					hovered: (view.spanIds ?? []).some((id) => hoverIds?.includes(id)),
+					hovered: view.notes.some((note) => hoverIds?.includes(note.referentId)),
 					onHover: (ids) => {
 						hoverIds = ids;
 						notify();

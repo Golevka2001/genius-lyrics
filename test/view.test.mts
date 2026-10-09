@@ -15,6 +15,8 @@ const note = (id: string, text: string, classification = "accepted"): Annotation
 
 const line = (text: string, referentIds: string[] = []): LyricLine => ({ text, referentIds });
 
+const ids = (view: LineView) => view.notes.map((note) => note.referentId);
+
 test("applyTiming matches Spotify's axis onto Genius' lines", () => {
 	const timed = applyTiming(
 		[line("Now, this looks like a job for me"), line("So, everybody, just follow me")],
@@ -152,9 +154,10 @@ test("applyTiming gives repeated choruses their own offsets", () => {
 	assert.equal(timed[2].startTimeMs, 9000, "the second chorus must use its own offset");
 });
 
-test("spanIds ties every line of a multi-line note to the same region", () => {
-	// Hovering any line of a spanning note brightens the whole run, so each line
-	// needs the ids of the region it belongs to — not just its own.
+test("every line of a multi-line note carries the note", () => {
+	// Genius anchors one referent across consecutive lines, and hovering any line
+	// of the run brightens all of it — the lines share one note, so any of them
+	// can open it.
 	const track = buildTrackView({
 		title: "t",
 		artist: "a",
@@ -170,15 +173,15 @@ test("spanIds ties every line of a multi-line note to the same region", () => {
 		]),
 	});
 
-	assert.deepEqual(track.lines[0].spanIds, ["1"]);
-	assert.deepEqual(track.lines[1].spanIds, ["1"], "a continuation belongs to the opener's region");
-	assert.deepEqual(track.lines[2].spanIds, ["1"]);
-	assert.deepEqual(track.lines[3].spanIds, ["2"], "the next note starts its own region");
+	assert.deepEqual(ids(track.lines[0]), ["1"]);
+	assert.deepEqual(ids(track.lines[1]), ["1"], "a continuation keeps the note it is part of");
+	assert.deepEqual(ids(track.lines[2]), ["1"]);
+	assert.deepEqual(ids(track.lines[3]), ["2"], "the next note starts its own region");
 });
 
-test("spanIds looks past a blank spacer to find the opener", () => {
+test("a note stays on the section header across a blank spacer", () => {
 	// Genius writes a blank line before a section header, and the header itself can
-	// sit inside an anchor, so the spacer must not end the region.
+	// sit inside an anchor, so the spacer must not take the note away.
 	const track = buildTrackView({
 		title: "t",
 		artist: "a",
@@ -190,22 +193,5 @@ test("spanIds looks past a blank spacer to find the opener", () => {
 		notes: new Map([["1", note("1", "note")]]),
 	});
 
-	assert.deepEqual(track.lines[2].spanIds, ["1"], "the header continues the note across the spacer");
-});
-
-test("spanIds of an unannotated line looks no further than the line above", () => {
-	// A plain line between two notes must not inherit the previous note's region.
-	const track = buildTrackView({
-		title: "t",
-		artist: "a",
-		lines: [
-			{ text: "annotated", referentIds: ["1"] },
-			{ text: "plain line", referentIds: [] },
-			{ text: "also plain", referentIds: [] },
-		],
-		notes: new Map([["1", note("1", "note")]]),
-	});
-
-	assert.deepEqual(track.lines[1].spanIds, []);
-	assert.deepEqual(track.lines[2].spanIds, []);
+	assert.deepEqual(ids(track.lines[2]), ["1"], "the header keeps the note across the spacer");
 });
