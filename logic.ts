@@ -176,7 +176,7 @@ export interface Annotation {
 	 */
 	classification: string;
 	/** Where the body came from, which decides precedence. */
-	source: "referent" | "annotation" | "top_comment" | "none";
+	source: "referent" | "annotation" | "none";
 	/**
 	 * Genius users credited on the annotation, strongest attribution first.
 	 * A single annotation is routinely co-signed by several people, so this is a
@@ -199,8 +199,8 @@ const readDom = (value: unknown): string => {
 /**
  * Build an annotation from a referent payload.
  *
- * Precedence mirrors lyrics-plus' getNote: an artist's own annotation wins,
- * then the community annotation, then the top comment.
+ * The referent carries the artist's own annotation, which is authoritative; a
+ * bare annotation payload covers the referents Genius serves without that list.
  */
 export const parseReferent = (payload: unknown, referentId: string): Annotation => {
 	const response = (payload as { response?: Record<string, unknown> })?.response ?? {};
@@ -217,16 +217,9 @@ export const parseReferent = (payload: unknown, referentId: string): Annotation 
 	let best: Record<string, unknown> = {};
 	let source: Annotation["source"] = "none";
 	for (const candidate of candidates) {
-		const body = readDom(candidate.body);
-		if (!body) continue;
+		if (!readDom(candidate.body)) continue;
 		best = candidate;
 		source = referentAnnotations.length > 0 ? "referent" : "annotation";
-		// A top comment is the last resort, and only when there is no annotation.
-		const comment = readDom((candidate.top_comment as Record<string, unknown> | undefined)?.body);
-		if (!body && comment) {
-			best = { ...candidate, body: (candidate.top_comment as Record<string, unknown>).body };
-			source = "top_comment";
-		}
 		break;
 	}
 	const text = readDom(best.body);
