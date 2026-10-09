@@ -430,13 +430,13 @@ export interface LyricLine {
 	/** Spotify's offset, attached later; absent when Spotify has no lyrics. */
 	startTimeMs?: number;
 	/**
-	 * Set on the line where a note begins; absent on the lines it continues over.
+	 * True on the line where a note begins, false on the lines it continues over.
 	 *
 	 * Genius anchors one referent across consecutive lines when a phrase spans
-	 * them, so every line of the span carries the same id. The note is fetched and
-	 * shown once, from the first line, while the continuation lines stay
-	 * annotated so the whole span can be highlighted as one region the way Genius
-	 * does — and so hovering any line of it can open the note.
+	 * them, so every line of the span carries the same id while only the first is
+	 * marked as the opener. The note is shown once, from that line, and the
+	 * continuation lines stay annotated so the whole span reads as one region the
+	 * way Genius does.
 	 */
 	noteStart?: boolean;
 	/**
@@ -559,7 +559,13 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 			for (const id of owned) {
 				if (isStart) opened.add(id);
 			}
-			lines.push({ text, referentIds: owned, ...(isStart ? { noteStart: true } : {}) });
+			// Continuations carry an id they inherited, which is what keeps the span
+			// highlighted as one block of lines rather than as separate notes.
+			lines.push({
+				text,
+				referentIds: owned,
+				...(owned.length > 0 ? { noteStart: isStart } : {}),
+			});
 		}
 	}
 

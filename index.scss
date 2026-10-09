@@ -135,8 +135,10 @@
 	border-bottom-right-radius: 0;
 }
 
-.gl-note-cont:last-of-type > .gl-line > .gl-text,
-.gl-note-cont:has(+ :not(.gl-note-cont)) > .gl-line > .gl-text {
+/* `last-of-type` would mean "the last line of the panel", since every sibling is a
+   div: a span that ends anywhere else never got its bottom corners back. What
+   matters is that the line is not followed by another one of the same note. */
+.gl-note-cont:not(:has(+ .gl-note-cont)) > .gl-line > .gl-text {
 	border-bottom-left-radius: 5px;
 	border-bottom-right-radius: 5px;
 }

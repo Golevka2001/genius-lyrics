@@ -320,6 +320,24 @@ test("a repeated chorus opens its note again at each repeat", () => {
 	assert.ok(chorusStarts.length >= 3, `expected the chorus to open each time, got ${chorusStarts.length}`);
 });
 
+test("a continuation is marked as one, not left unmarked", () => {
+	// Only the first line of a spanning anchor opens the note; the rest carry the
+	// same referent id without opening it. The stylesheet needs that difference to
+	// tint the run as a single block, so an unmarked continuation — which looks
+	// exactly like a line the parser simply skipped — silently breaks it.
+	const lines = parseLyricLines(lyricsPage());
+	const annotated = lines.filter((line) => line.referentIds.length > 0);
+
+	assert.ok(annotated.length > 0, "expected the fixture to carry annotations");
+	for (const line of annotated) {
+		assert.notEqual(line.noteStart, undefined, `annotated line ${JSON.stringify(line.text)} is unmarked`);
+	}
+	assert.ok(
+		annotated.some((line) => line.noteStart === false),
+		"expected at least one continuation",
+	);
+});
+
 test("parseLyricLines keeps every blank line Genius writes", () => {
 	// Genius separates sections with <br><br>. The blank is the only signal: a
 	// section header is written in exactly the same markup as a lyric, so nothing
