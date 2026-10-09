@@ -15,5 +15,5 @@
 		"stdlib": "^1.13.0"
 	},
 	"repository": "https://github.com/Golevka2001/genius-lyrics",
-	"license": "MIT"
+	"license": "GPL-3.0-or-later"
 }
