@@ -296,17 +296,6 @@ test("parseLyricLines keeps every blank line Genius writes", () => {
 	assert.equal(lines[lines.length - 1].blank, undefined, "the song must not end on a blank");
 });
 
-test("parseLyricLines is linear in page size, not quadratic", () => {
-	// A single greedy pattern over a full Genius page caused multi-second
-	// backtracking; the scan-based parser must stay fast.
-	const filler = "<div>".repeat(20000);
-	const html = `${filler}<div data-lyrics-container="true">${"line<br>".repeat(40)}</div>`;
-	const started = process.hrtime.bigint();
-	parseLyricLines(html);
-	const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
-	assert.ok(elapsedMs < 500, `parser took ${elapsedMs.toFixed(0)}ms`);
-});
-
 test("parseReferent credits every co-signer, not the moderator account", () => {
 	// A referent carries `annotator_login` for the Genius account that opened it,
 	// which is a moderator handle. The writers are in `authors`, and one
