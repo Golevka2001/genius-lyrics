@@ -1,0 +1,368 @@
+/*
+ * Page styling.
+ *
+ * Colours come from Spotify's own CSS variables wherever they exist so the page
+ * follows the user's theme, with plain fallbacks for variables a custom theme
+ * may not define.
+ */
+
+.gl-page {
+	height: 100%;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.gl-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	max-width: 720px;
+	margin: 0 auto;
+	padding: 24px 20px 64px;
+	font-size: 15px;
+	line-height: 1.55;
+	color: var(--text-base, #fff);
+}
+
+/* ---- heading ---- */
+
+.gl-head {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid var(--base-border-subtle, rgba(255, 255, 255, 0.12));
+}
+
+.gl-title {
+	font-size: 1.6em;
+	font-weight: 700;
+	line-height: 1.25;
+}
+
+.gl-artist {
+	font-size: 0.95em;
+	opacity: 0.7;
+}
+
+.gl-count {
+	font-size: 0.78em;
+	opacity: 0.55;
+	margin-top: 6px;
+}
+
+.gl-empty,
+.gl-hint {
+	font-size: 0.82em;
+	opacity: 0.6;
+	margin: 0;
+}
+
+/* ---- lyric lines ---- */
+
+.gl-lines {
+	display: flex;
+	flex-direction: column;
+}
+
+.gl-line-wrap {
+	position: relative;
+}
+
+.gl-line {
+	display: block;
+	width: 100%;
+	text-align: left;
+	background: none;
+	border: 0;
+	padding: 7px 20px 7px 0;
+	margin: 0;
+	font: inherit;
+	color: inherit;
+	opacity: 0.75;
+	cursor: default;
+	border-radius: 5px;
+	transition: opacity 120ms ease, background 120ms ease;
+}
+
+.gl-line:disabled {
+	cursor: default;
+}
+
+/* Only annotated words are clickable. The cursor and the hit area both live on
+   the text span, so pointing at the empty half of a line changes nothing. */
+.gl-note-start .gl-text,
+.gl-note-cont .gl-text {
+	cursor: pointer;
+}
+
+/* Annotated lines read at full strength; unannotated ones stay dimmed. */
+.gl-note-start .gl-line,
+.gl-note-cont .gl-line {
+	opacity: 1;
+}
+
+/* ---- spanning notes ----
+   Genius tints the annotated words, not the whole line, so the highlight lives on
+   the text span. The span is inline-block for that: an inline box paints its
+   background across the full line box, which is the stripe the design does not
+   have. Padding is held to zero and the gap comes from a margin instead, which
+   keeps consecutive lines' tints touching the way Genius' do. */
+
+.gl-text {
+	display: inline-block;
+	padding: 2px 4px;
+	margin: 0 -4px;
+	border-radius: 4px;
+	cursor: default;
+	transition: background 120ms ease, color 120ms ease;
+}
+
+.gl-note-start > .gl-line > .gl-text,
+.gl-note-cont > .gl-line > .gl-text {
+	background: var(--text-base-pressable, rgba(255, 255, 255, 0.11));
+}
+
+/* The first line of a span rounds its top, the last its bottom, and a single-line
+   note rounds all four, so a run of tinted words reads as one block. */
+.gl-note-start > .gl-line > .gl-text {
+	border-top-left-radius: 5px;
+	border-top-right-radius: 5px;
+}
+
+.gl-note-start:has(+ .gl-note-cont) > .gl-line > .gl-text {
+	border-bottom-left-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.gl-note-cont:last-of-type > .gl-line > .gl-text,
+.gl-note-cont:has(+ :not(.gl-note-cont)) > .gl-line > .gl-text {
+	border-bottom-left-radius: 5px;
+	border-bottom-right-radius: 5px;
+}
+
+/* Hovering any line of a span lifts the whole run and lightens its text, so the
+   words stay readable against the brighter tint.
+
+   The span is marked in JS rather than styled through a sibling combinator: a run
+   can be five lines long, and ":hover + .gl-note-cont" only ever reaches the line
+   below, while ":has()" from the list would light every annotated line at once
+   because the pointer is always somewhere in it. The module knows exactly which
+   lines belong to the span, so it says so. */
+.gl-note-hover > .gl-line > .gl-text {
+	background: var(--text-base-pressable-strong, rgba(255, 255, 255, 0.2));
+	color: var(--text-highlight, #fff);
+}
+
+/* The blank line Genius writes before a header, as <br><br>.
+
+   It has to be taller than a line's own leading or it reads as nothing at all:
+   with the lyrics at 41px per row, an 8px gap is smaller than the gap between two
+   consecutive lines, so the sections looked like one continuous block. Half a row
+   is what a doubled <br> actually produces. */
+.gl-blank {
+	height: 20px;
+}
+
+/* ---- annotation popover ---- */
+
+.gl-pop {
+	margin: 2px 0 10px;
+	padding: 12px 14px;
+	border-radius: 10px;
+	background: var(--background-base, rgba(255, 255, 255, 0.06));
+	border-left: 3px solid var(--text-base, #fff);
+}
+
+.gl-note + .gl-note {
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid var(--base-border-subtle, rgba(255, 255, 255, 0.12));
+}
+
+.gl-note-body {
+	display: flex;
+	flex-direction: column;
+	gap: 9px;
+}
+
+.gl-note-text {
+	margin: 0;
+	font-size: 0.93em;
+	line-height: 1.6;
+}
+
+/* A quoted lyric excerpt from Genius' <blockquote>. Genius marks these with a
+   large quote glyph rather than a rule, and matching that reads as a quotation
+   instead of as a code block. */
+.gl-note-quote {
+	position: relative;
+	margin: 0;
+	padding: 2px 0 2px 26px;
+	font-size: 0.95em;
+	font-style: italic;
+	opacity: 0.78;
+}
+
+.gl-note-quote::before {
+	content: "\201C";
+	position: absolute;
+	left: 2px;
+	top: -6px;
+	font-size: 2.4em;
+	line-height: 1;
+	font-style: normal;
+	opacity: 0.45;
+	pointer-events: none;
+}
+
+/* Close the quotation at the end of the last line, as Genius does. */
+.gl-note-quote > :last-child::after {
+	content: "\201D";
+	font-size: 1.5em;
+	line-height: 0;
+	vertical-align: -0.15em;
+	opacity: 0.45;
+}
+
+/* Genius embeds artwork as full-width captures (640x351 and up), which at panel
+   width swamps the note it belongs to. Cap the height and let the width follow, so
+   an image reads as an illustration rather than as the main content. */
+.gl-note-image {
+	display: block;
+	width: auto;
+	max-width: 100%;
+	max-height: 220px;
+	border-radius: 7px;
+	opacity: 0.92;
+}
+
+/* Genius underlines the artist, album, song and outbound links inside its prose.
+   They are citations, so they read as links rather than as plain words. */
+.gl-link {
+	color: inherit;
+	cursor: pointer;
+	text-decoration: underline;
+	text-decoration-color: var(--text-base, #fff);
+	text-underline-offset: 2px;
+	text-decoration-thickness: 1px;
+	opacity: 0.85;
+	cursor: pointer;
+}
+
+.gl-link:hover {
+	opacity: 1;
+	text-decoration-thickness: 2px;
+}
+
+/* Genius shows a thumb with a signed count, so match that rather than writing
+   "N upvotes". */
+.gl-note-meta {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	margin-top: 9px;
+	font-size: 0.76em;
+	font-variant-numeric: tabular-nums;
+	opacity: 0.62;
+}
+
+/* The icon source carries its own size; the wrapper only aligns it. */
+.gl-vote-icon {
+	display: inline-flex;
+	align-items: center;
+	opacity: 0.7;
+}
+
+.gl-vote-icon > svg {
+	width: 11px;
+	height: 11px;
+	display: block;
+}
+
+/* ---- status states ---- */
+
+.gl-status {
+	padding: 32px 20px;
+	font-size: 0.92em;
+	opacity: 0.75;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-width: 720px;
+	margin: 0 auto;
+}
+
+.gl-status p {
+	margin: 0;
+}
+
+.gl-status-error {
+	color: var(--text-negative, #f25f5c);
+	opacity: 1;
+}
+
+.gl-status-error .gl-hint {
+	color: var(--text-base, #fff);
+}
+
+/* ---- playback sync ---- */
+
+/* The line the track is currently on. Only applied when Spotify supplied a
+   synced axis, so a track without one stays uniformly dimmed rather than
+   highlighting whatever happens to sit in the middle. */
+.gl-line-active {
+	opacity: 1;
+	font-weight: 600;
+}
+
+/* The current line gets a wash behind its words rather than across the row, so it
+   reads at a glance without competing with the annotation tint. */
+.gl-line-active > .gl-text {
+	background: var(--text-base-pressable, rgba(255, 255, 255, 0.07));
+	color: var(--text-highlight, #fff);
+}
+
+/* An open note is the thing the reader is looking at, so it outranks the playback
+   wash and the annotation tint alike. */
+.gl-line-open > .gl-text {
+	background: var(--text-base-pressable-strong, rgba(255, 255, 255, 0.2));
+	color: var(--text-highlight, #fff);
+	font-weight: 600;
+}
+
+/* Untimed lines (section headers, ad-libs) recede further so the timed ones
+   stand out as the spine of the song. */
+.gl-line-wrap:not(:has(.gl-line-active)) .gl-line {
+	transition: opacity 200ms ease;
+}
+
+/* ---- selection ----
+   The client sets `user-select: none` on <body> and on `.spicetify-route-page`,
+   the route container this page is mounted into. Re-enabling it on our own
+   elements is not enough: a drag that begins in the gap between two lines, or in
+   the page's own padding, is cancelled by the nearest ancestor before it ever
+   reaches a descendant that opted back in — which is why the heading, an <h1>
+   with user-select:text, still could not be selected.
+
+   The fix is to own the whole box. `isolation: isolate` makes this element a
+   stacking context, and `user-select: text` on it applies to its entire subtree
+   including the empty regions, so a drag starting anywhere inside the page
+   belongs to the text. */
+.gl-page {
+	-webkit-user-select: text;
+	user-select: text;
+	isolation: isolate;
+}
+
+.gl-page *:not(a) {
+	-webkit-user-select: text;
+	user-select: text;
+}
+
+/* The annotation body is prose the reader may want to quote. */
+.gl-note-body,
+.gl-note-body * {
+	-webkit-user-select: text;
+	user-select: text;
+}
