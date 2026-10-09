@@ -1,0 +1,19 @@
+{
+	"name": "genius-lyrics",
+	"kind": "extension",
+	"version": "0.1.0",
+	"authors": [
+		"Golevka2001"
+	],
+	"description": "Show lyrics from Genius with the annotations attached to the lines they explain.",
+	"entries": {
+		"js": "index.js",
+		"css": "index.css"
+	},
+	"hasMixins": false,
+	"dependencies": {
+		"stdlib": "^1.13.0"
+	},
+	"repository": "https://github.com/Golevka2001/genius-lyrics",
+	"license": "MIT"
+}

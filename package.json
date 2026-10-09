@@ -1,0 +1,29 @@
+{
+	"name": "genius-lyrics",
+	"private": true,
+	"type": "module",
+	"engines": {
+		"node": ">=22.6"
+	},
+	"scripts": {
+		"build": "spicetify-kit build .",
+		"dev": "spicetify-kit dev .",
+		"check": "tsc && spicetify-kit check .",
+		"test": "bun test"
+	},
+	"devDependencies": {
+		"@spicetify/kit": "^0.4.4",
+		"@types/node": "^26.6.4",
+		"@types/react": "^18",
+		"@types/react-dom": "^18",
+		"rxjs": "^7.8.1",
+		"typescript": "^7"
+	},
+	"packageManager": "bun@1.4.2",
+	"license": "MIT",
+	"author": "Golevka2001",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Golevka2001/genius-lyrics"
+	}
+}
