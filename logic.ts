@@ -439,8 +439,8 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 			// opened above a break only means this line is inside it, and that line
 			// must not open anything.
 			const ids = collectReferentIds(raw);
-			const opens = countTags(raw, "<a\\b", false);
-			const closes = countTags(raw, "</a>", false);
+			const opens = raw.match(OPENING_ANCHOR)?.length ?? 0;
+			const closes = raw.match(CLOSING_ANCHOR)?.length ?? 0;
 			spanStarts.push(ids.length > 0);
 
 			if (ids.length > 0) openIds = ids;
@@ -494,8 +494,6 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 
 	return lines;
 };;
-
-/** Referent ids appearing directly in a fragment, in order. */
 const collectReferentIds = (fragment: string): string[] => {
 	const ids: string[] = [];
 	REFERENT_HREF.lastIndex = 0;
@@ -507,9 +505,12 @@ const collectReferentIds = (fragment: string): string[] => {
 	return ids;
 };
 
-/** Count tag matches, optionally case-insensitively. */
-const countTags = (fragment: string, pattern: string, flags: boolean): number =>
-	fragment.match(new RegExp(pattern, flags ? "gi" : "g"))?.length ?? 0;
+/**
+ * String#match resets lastIndex itself, so these can be shared instead of being
+ * rebuilt for every line of every song.
+ */
+const OPENING_ANCHOR = /<a\b/g;
+const CLOSING_ANCHOR = /<\/a>/g;
 
 /**
  * Cut every data-exclude-from-selection region out of a lyrics block.
