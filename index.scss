@@ -10,6 +10,12 @@
 	height: 100%;
 	overflow-y: auto;
 	overscroll-behavior: contain;
+	/* The client sets `user-select: none` on <body> and on the route container
+	   this page is mounted into, so nothing inside is selectable without an
+	   author rule. One is enough, here on the box that owns the page: the
+	   property is inherited, so it reaches the whole subtree — the lyric lines,
+	   the annotation bodies and the empty regions a drag may start in. */
+	user-select: text;
 }
 
 .gl-panel {
@@ -225,7 +231,8 @@
 
 /* A quoted lyric excerpt from Genius' <blockquote>. Genius marks these with a
    large quote glyph rather than a rule, and matching that reads as a quotation
-   instead of as a code block. */
+   instead of as a code block. Only where the quotation starts: the excerpts end
+   mid-sentence, so a trailing glyph has no closing bracket to mark. */
 .gl-note-quote {
 	position: relative;
 	margin: 0;
@@ -245,15 +252,6 @@
 	font-style: normal;
 	opacity: 0.45;
 	pointer-events: none;
-}
-
-/* Close the quotation at the end of the last line, as Genius does. */
-.gl-note-quote > :last-child::after {
-	content: "\201D";
-	font-size: 1.5em;
-	line-height: 0;
-	vertical-align: -0.15em;
-	opacity: 0.45;
 }
 
 /* Genius embeds artwork as full-width captures (640x351 and up), which at panel
@@ -365,34 +363,4 @@
    stand out as the spine of the song. */
 .gl-line-wrap:not(:has(.gl-line-active)) .gl-line {
 	transition: opacity 200ms ease;
-}
-
-/* ---- selection ----
-   The client sets `user-select: none` on <body> and on `.spicetify-route-page`,
-   the route container this page is mounted into. Re-enabling it on our own
-   elements is not enough: a drag that begins in the gap between two lines, or in
-   the page's own padding, is cancelled by the nearest ancestor before it ever
-   reaches a descendant that opted back in — which is why the heading, an <h1>
-   with user-select:text, still could not be selected.
-
-   The fix is to own the whole box. `isolation: isolate` makes this element a
-   stacking context, and `user-select: text` on it applies to its entire subtree
-   including the empty regions, so a drag starting anywhere inside the page
-   belongs to the text. */
-.gl-page {
-	-webkit-user-select: text;
-	user-select: text;
-	isolation: isolate;
-}
-
-.gl-page *:not(a) {
-	-webkit-user-select: text;
-	user-select: text;
-}
-
-/* The annotation body is prose the reader may want to quote. */
-.gl-note-body,
-.gl-note-body * {
-	-webkit-user-select: text;
-	user-select: text;
 }

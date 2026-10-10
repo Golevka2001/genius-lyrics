@@ -16,15 +16,16 @@ import { activeLineIndex, buildTrackView, hasTimeline, type LineView, type Panel
 const h = React.createElement;
 
 /**
- * Material Symbols "thumb_up", inline SVG source.
+ * Genius' own vote icon, inline SVG source.
  *
- * From the icon set Genius itself uses, so the badge matches the site it comes
- * from. Drawn on stdlib's 16-grid: `createIconComponent` takes SVG markup and
- * supplies the viewBox, which is why this is a string rather than a <path>.
+ * The glyph genius.com draws next to a note's vote count, kept as the site draws
+ * it rather than as a lookalike: it is a 24-grid drawing of its own, so the
+ * viewBox travels with it instead of being the client's. Markup rather than a
+ * <path> because the wrapper is set through innerHTML.
  */
 const THUMB_UP =
-	'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" height="16" width="16" fill="currentColor">' +
-	'<path d="M240-160q-33 0-56.5-23.5T160-240v-480q0-33 23.5-56.5T240-800h232q33 0 56.5 23.5T552-720v488l92-241q11-28 36-46t54-18h40q33 0 56.5 23.5T844-472v244q0 21-8.5 40.5T802 762L694 928q-17 26-44 42t-56 16H240Zm-80-80h430v-560H160v560Zm0 80v-640q0-33 23.5-56.5T160-880h232q33 0 56.5 23.5T472-800v488l92-241q11-28 36-46t54-18h40q33 0 56.5 23.5T764-472v244q0 21-8.5 40.5T722 762L614 928q-17 26-44 42t-56 16H160Z"/>' +
+	'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" height="16" width="16" fill="currentColor">' +
+	'<path d="M16.52 21.29H6V8.5l.84-.13a3.45 3.45 0 0 0 1.82-1.09 13.16 13.16 0 0 0 .82-1.85c1.06-2.69 2-4.78 3.52-5.31a2.06 2.06 0 0 1 1.74.17c2.5 1.42 1 5 .16 6.95-.11.27-.25.6-.31.77a.78.78 0 0 0 .6.36h4.1a2.29 2.29 0 0 1 2.37 2.37c0 .82-1.59 5.4-2.92 9.09a2.39 2.39 0 0 1-2.22 1.46zm-8.52-2h8.56a.48.48 0 0 0 .31-.17c1.31-3.65 2.73-7.82 2.79-8.44 0-.22-.1-.32-.37-.32h-4.1A2.61 2.61 0 0 1 12.54 8 4.29 4.29 0 0 1 13 6.46c.45-1.06 1.64-3.89.7-4.43-.52 0-1.3 1.4-2.38 4.14a10 10 0 0 1-1.13 2.38A5.28 5.28 0 0 1 8 10.11zM0 8.4h4.86v12.96H0z"/>' +
 	"</svg>";
 
 interface TrackItem {
@@ -194,8 +195,8 @@ const NoteCard = ({ note }: { note: Annotation }) =>
 						"span",
 						{
 							className: "gl-vote-icon",
-							// Material Symbols "thumb_up", the icon Genius uses itself,
-							// drawn on stdlib's 16-grid.
+							// Genius' own thumb, the same glyph the site puts
+							// beside a note's vote count.
 							dangerouslySetInnerHTML: { __html: THUMB_UP },
 							"aria-hidden": "true",
 						},
@@ -244,11 +245,11 @@ const Line = ({
 				.join(" "),
 			ref: isActive ? activeRef : undefined,
 		},
-		// A <button> cannot be selected: the UA stylesheet sets user-select:none on
-		// it and no author rule overrides that, so a drag starting on the line is
-		// cancelled before it reaches the text and the lyrics cannot be copied. A
-		// <div role="button"> is focusable and clickable by keyboard while leaving the
-		// text selectable, which is the trade the panel needs.
+		// The row is a keyboard affordance and nothing else: the role and the tab
+		// stop are here so a note can be opened without a pointer, and Enter/Space
+		// is handled below for the same reason. Nothing about selection hangs on the
+		// element choice — a <button> here would inherit the page's `user-select:
+		// text` just the same.
 		//
 		// The pointer handlers sit on the text rather than the row: Genius marks the
 		// words, and a hit area spanning the full width would light up when the

@@ -55,6 +55,10 @@ test("mod.tsx renders neither an approval badge nor contributor names", () => {
 	);
 	// Genius shows a thumb with a signed count, not a worded tally.
 	assert.match(modSource, /const THUMB_UP =\s*\n\t\s*'<svg/);
+	// And it is the site's own glyph, kept on its own 24-grid: a stand-in from
+	// the client's icon set would be drawn on 16, which is how this one started
+	// out and did not match the site it is quoting.
+	assert.match(modSource, /const THUMB_UP =[\s\S]*?viewBox="0 0 24 24"/);
 	assert.match(modSource, /dangerouslySetInnerHTML: \{ __html: THUMB_UP \}/);
 	assert.match(modSource, /children: note\.votes > 0 \? `\+\$\{note\.votes\}` : "0"/);
 });
@@ -129,4 +133,36 @@ test("index.scss only reads CSS variables the client actually defines", () => {
 		[],
 		"undefined in the client, so the fallback decides — and it was written for a dark theme",
 	);
+});
+
+test("index.scss re-enables selection exactly once", () => {
+	// The client sets `user-select: none` on <body> and on the route container, so
+	// one author rule is what makes the page selectable at all — and since the
+	// property is inherited, it reaches the whole subtree from there: the lines,
+	// the annotation bodies and the empty regions a drag can start in. A second
+	// declaration adds nothing, which is what this block had grown into: a rule
+	// per element, a prefixed twin of each, and `isolation`, which has nothing to
+	// do with selection.
+	// The comments above talk about the property too, so match against the rules
+	// with the comments stripped: a prefixed twin counts as a second declaration.
+	const rules = scssSource.replace(/\/\*[\s\S]*?\*\//g, "");
+	const declared = [...rules.matchAll(/user-select:\s*([a-z-]+)/g)].map(([, value]) => value);
+	assert.deepEqual(declared, ["text"], "one inherited declaration is the whole need");
+});
+
+test("nothing closes the quoted excerpt", () => {
+	// Genius marks where a quotation starts and leaves the end to the reader; the
+	// excerpts here stop mid-sentence, so the trailing glyph this block used to
+	// draw hung off text that never had a closing bracket to give it.
+	const rules = [...scssSource.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+		.map(([, selector, body]) => [selector.trim(), body] as const)
+		.filter(([selector]) => selector.includes(".gl-note-quote"));
+
+	assert.ok(rules.length > 0, "expected the excerpt to be styled");
+	assert.deepEqual(
+		rules.filter(([selector]) => selector.includes("::after")).map(([selector]) => selector),
+		[],
+		"the glyph opens the excerpt; nothing marks its end",
+	);
+	assert.ok(!scssSource.includes("201D"), "no closing quote glyph is left behind");
 });
