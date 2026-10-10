@@ -108,11 +108,10 @@ export interface Annotation {
 	/** The body as renderable blocks, since annotations are structured prose. */
 	blocks: NoteBlock[];
 	/**
-	 * Genius' own review state: "accepted" means an editor approved it, and
-	 * "unreviewed" means pending. Kept for filtering, not rendered — Genius shows
-	 * no such chip on a note.
+	 * True when the artist wrote the note themselves, which Genius marks as
+	 * verified. The site tints those yellow instead of grey, so the panel does.
 	 */
-	classification: string;
+	verified: boolean;
 	/** Where the body came from, which decides precedence. */
 	source: "referent" | "annotation" | "none";
 	/**
@@ -144,7 +143,14 @@ export const parseReferent = (payload: unknown, referentId: string): Annotation 
 	const response = (payload as { response?: Record<string, unknown> })?.response ?? {};
 	const referent = (response.referent ?? {}) as Record<string, unknown>;
 	const fragment = typeof referent.fragment === "string" ? referent.fragment : "";
-	const classification = typeof referent.classification === "string" ? referent.classification : "unreviewed";
+	/**
+	 * Which endpoint served the body decides where the verified flag survives:
+	 * referents/ reports it on both the referent and its annotation, but
+	 * annotations/ — the fallback — keeps it only on the referent, and reports
+	 * the annotation as merely accepted. Reading both is what keeps a verified
+	 * note yellow either way.
+	 */
+	const verified = referent.classification === "verified";
 
 	// Prefer the referent's own annotation list; fall back to a standalone
 	// annotation payload for referents Genius serves without the list attached.
@@ -181,7 +187,7 @@ export const parseReferent = (payload: unknown, referentId: string): Annotation 
 		fragment,
 		text,
 		blocks: text ? parseNoteBlocks(bodyOf(best) ?? bodyOf(annotation)) : [],
-		classification,
+		verified: verified || best.verified === true,
 		source,
 		authors,
 		votes: typeof votes === "number" ? votes : undefined,

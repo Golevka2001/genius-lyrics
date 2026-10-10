@@ -102,6 +102,65 @@ test("parseReferent survives a missing payload", () => {
 	const annotation = parseReferent(null, "1");
 	assert.equal(annotation.text, "");
 	assert.equal(annotation.source, "none");
+	assert.equal(annotation.verified, false);
+});
+
+test("parseReferent marks a note the artist wrote themselves as verified", () => {
+	// Verified notes are the artist's own words and Genius tints them yellow, so
+	// the panel needs to know which they are. A note nobody vouched for must not
+	// take the tint, which is the ordinary case.
+	const verified = parseReferent(
+		{
+			response: {
+				referent: {
+					id: 42545,
+					classification: "verified",
+					fragment: "x",
+					annotations: [{ verified: true, body: { dom: { tag: "root", children: ["Own words."] } } }],
+				},
+			},
+		},
+		"42545",
+	);
+	assert.equal(verified.verified, true);
+
+	const community = parseReferent(
+		{
+			response: {
+				referent: {
+					id: 26241,
+					classification: "accepted",
+					fragment: "x",
+					annotations: [{ verified: false, body: { dom: { tag: "root", children: ["A reader's note."] } } }],
+				},
+			},
+		},
+		"26241",
+	);
+	assert.equal(community.verified, false);
+});
+
+test("parseReferent reads verified off the fallback endpoint as well", () => {
+	// annotations/{id} is what answers when a referent is still indexing. It has
+	// no annotation list, and the annotation it returns reports itself merely
+	// accepted even when verified — so the referent's own classification is the
+	// only witness left and reading both is what keeps the tint either way.
+	const annotation = parseReferent(
+		{
+			response: {
+				referent: { id: 42545, classification: "verified" },
+				annotation: {
+					id: 42545,
+					verified: false,
+					state: "accepted",
+					body: { dom: { tag: "root", children: ["Own words."] } },
+				},
+			},
+		},
+		"42545",
+	);
+	assert.equal(annotation.verified, true);
+	assert.equal(annotation.source, "annotation");
 });
 
 test("parseLyricLines reads lines and their anchors from the real page", () => {

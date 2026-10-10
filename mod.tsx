@@ -64,7 +64,6 @@ const setState = (next: PanelState) => {
 	notify();
 };
 
-let loadedKey = "";
 /** Bumped per load so a slow response for a previous track is discarded. */
 let generation = 0;
 
@@ -74,12 +73,10 @@ async function load(item: TrackItem | undefined) {
 	openLine = null;
 
 	if (!key) {
-		loadedKey = "";
 		setState({ state: "no-genius", track: null });
 		return;
 	}
 
-	loadedKey = key;
 	setState({ state: "loading", track: null });
 
 	const title = item?.name ?? "";
@@ -233,6 +230,9 @@ const Line = ({
 				// annotated words carry a tint, and hovering any line of the span
 				// brightens the whole run so it reads as one marked region.
 				view.annotated ? (view.noteStart === false ? " gl-note-cont" : " gl-note-start") : "",
+				// Genius colours a note the artist wrote itself yellow rather than
+				// grey; every other note looks alike.
+				view.verified ? " gl-note-verified" : "",
 				view.blank ? " gl-blank" : "",
 				// Driven from the panel rather than from CSS: the pointer is always
 				// inside the line list, so a `:has()` test on the list would light
@@ -305,9 +305,11 @@ const Panel = () => {
 		}
 		const tick = () => setPosition(client.player.getProgress() ?? 0);
 		tick();
-		// The subscription is torn down with the page: stdlib's player listener
-		// returns nothing, so there is nothing to unwatch individually.
 		client.player.addEventListener("onprogress", tick);
+		// Unsubscribed on cleanup rather than left behind: the effect re-runs for
+		// every track, so this listener would otherwise accumulate one copy per
+		// song change.
+		return () => client.player.removeEventListener("onprogress", tick);
 	}, [timed, state.track]);
 
 	const activeIndex =
@@ -428,8 +430,8 @@ const App = () => {
 		const onChange = () => {
 			void load(client.player.data?.item as TrackItem | undefined);
 		};
-		client.player.addEventListener("ontrackchange", onChange);
-		return () => client.player.removeEventListener("ontrackchange", onChange);
+		client.player.addEventListener("songchange", onChange);
+		return () => client.player.removeEventListener("songchange", onChange);
 	}, []);
 
 	return h("div", { className: "gl-page" }, h(Panel, null));

@@ -3,11 +3,11 @@ import { test } from "node:test";
 import { activeLineIndex, applyTiming, buildTrackView, hasTimeline, type LineView } from "../view.ts";
 import type { Annotation, LyricLine } from "../logic.ts";
 
-const note = (id: string, text: string, classification = "accepted"): Annotation => ({
+const note = (id: string, text: string, verified = false): Annotation => ({
 	referentId: id,
 	fragment: id,
 	text,
-	classification,
+	verified,
 	source: "referent",
 	authors: [],
 	blocks: [],
@@ -53,7 +53,7 @@ test("buildTrackView attaches notes by anchor and counts annotated lines", () =>
 		lines: [line("[Chorus: Eminem]"), line("Now, this looks like a job for me", ["1"]), line("follow me", ["2", "3"])],
 		notes: new Map([
 			["1", note("1", "first note")],
-			["2", note("2", "second note", "unreviewed")],
+			["2", note("2", "second note")],
 			["3", note("3", "")],
 		]),
 	});
@@ -99,11 +99,29 @@ test("buildTrackView keeps annotations in page order", () => {
 	assert.deepEqual(view.lines[0].notes.map((n) => n.referentId), ["9", "5", "7"]);
 });
 
+test("buildTrackView marks a line verified when any note on it is", () => {
+	// A line can carry several notes, and Genius tints the whole thing when one
+	// of them is the artist's own, so the line takes the any, not the first.
+	const view = buildTrackView({
+		title: "Lose Yourself",
+		artist: "Eminem",
+		lines: [line("plain"), line("a reader's note", ["1"]), line("both", ["1", "2"])],
+		notes: new Map([
+			["1", note("1", "a reader's note")],
+			["2", note("2", "Eminem's own words", true)],
+		]),
+	});
+
+	assert.equal(view.lines[0].verified, false, "no note, nothing to tint");
+	assert.equal(view.lines[1].verified, false);
+	assert.equal(view.lines[2].verified, true, "one verified note tints the whole line");
+});
+
 test("activeLineIndex follows playback position", () => {
 	const lines: LineView[] = [
-		{ index: 0, text: "one", notes: [], annotated: false, startTimeMs: 1000 },
-		{ index: 1, text: "two", notes: [], annotated: false, startTimeMs: 3000 },
-		{ index: 2, text: "three", notes: [], annotated: false, startTimeMs: 6000 },
+		{ index: 0, text: "one", notes: [], annotated: false, verified: false, startTimeMs: 1000 },
+		{ index: 1, text: "two", notes: [], annotated: false, verified: false, startTimeMs: 3000 },
+		{ index: 2, text: "three", notes: [], annotated: false, verified: false, startTimeMs: 6000 },
 	];
 	assert.equal(activeLineIndex(lines, 0), -1, "before the first line nothing is active");
 	assert.equal(activeLineIndex(lines, 1500), 0);
@@ -116,10 +134,10 @@ test("activeLineIndex skips lines Spotify has no offset for", () => {
 	// Genius carries section headers and ad-libs that Spotify does not time, so
 	// the axis has holes. The highlight must not stall on one.
 	const lines: LineView[] = [
-		{ index: 0, text: "[Verse 1]", notes: [], annotated: false },
-		{ index: 1, text: "first", notes: [], annotated: false, startTimeMs: 2000 },
-		{ index: 2, text: "untimed", notes: [], annotated: false },
-		{ index: 3, text: "second", notes: [], annotated: false, startTimeMs: 5000 },
+		{ index: 0, text: "[Verse 1]", notes: [], annotated: false, verified: false },
+		{ index: 1, text: "first", notes: [], annotated: false, verified: false, startTimeMs: 2000 },
+		{ index: 2, text: "untimed", notes: [], annotated: false, verified: false },
+		{ index: 3, text: "second", notes: [], annotated: false, verified: false, startTimeMs: 5000 },
 	];
 	assert.equal(activeLineIndex(lines, 100), -1);
 	assert.equal(activeLineIndex(lines, 2500), 1);
@@ -128,11 +146,11 @@ test("activeLineIndex skips lines Spotify has no offset for", () => {
 });
 
 test("hasTimeline reports whether following playback is possible", () => {
-	assert.equal(hasTimeline([{ index: 0, text: "a", notes: [], annotated: false }]), false);
+	assert.equal(hasTimeline([{ index: 0, text: "a", notes: [], annotated: false, verified: false }]), false);
 	assert.equal(
 		hasTimeline([
-			{ index: 0, text: "a", notes: [], annotated: false },
-			{ index: 1, text: "b", notes: [], annotated: false, startTimeMs: 10 },
+			{ index: 0, text: "a", notes: [], annotated: false, verified: false },
+			{ index: 1, text: "b", notes: [], annotated: false, verified: false, startTimeMs: 10 },
 		]),
 		true,
 	);

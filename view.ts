@@ -16,6 +16,11 @@ export interface LineView {
 	notes: Annotation[];
 	/** True when the line carries at least one note, i.e. it is clickable. */
 	annotated: boolean;
+	/**
+	 * True when Genius verified any note on this line. A verified note is one
+	 * the artist wrote themselves, and it is the one kind the site singles out.
+	 */
+	verified: boolean;
 	/** Spotify's start offset, when a synced axis was found. */
 	startTimeMs?: number;
 	/** True where the note opens, false on the lines it continues over. */
@@ -121,6 +126,7 @@ export const buildTrackView = ({
 			text: line.text,
 			notes: unique,
 			annotated: unique.length > 0,
+			verified: unique.some((note) => note.verified),
 			startTimeMs: line.startTimeMs,
 			noteStart: line.noteStart,
 			blank: line.blank,

@@ -14,6 +14,7 @@ import { test } from "node:test";
  */
 
 const modSource = readFileSync(new URL("../mod.tsx", import.meta.url), "utf8");
+const scssSource = readFileSync(new URL("../index.scss", import.meta.url), "utf8");
 
 test("mod.tsx never passes textContent as a prop", () => {
 	// React.createElement has no textContent prop; text only appears via children.
@@ -56,4 +57,76 @@ test("mod.tsx renders neither an approval badge nor contributor names", () => {
 	assert.match(modSource, /const THUMB_UP =\s*\n\t\s*'<svg/);
 	assert.match(modSource, /dangerouslySetInnerHTML: \{ __html: THUMB_UP \}/);
 	assert.match(modSource, /children: note\.votes > 0 \? `\+\$\{note\.votes\}` : "0"/);
+});
+
+test("mod.tsx subscribes only to events the client actually dispatches", () => {
+	// The client dispatches songchange, onplaypause, onprogress and appchange and
+	// nothing else (spicetifyWrapper.js). A listener under any other name is
+	// registered, never fires, and nothing says so: addEventListener takes
+	// `type: string`, so a misspelling typechecks like any real event. That is
+	// how a panel ended up watching "ontrackchange" and staying on its first
+	// song for good.
+	const dispatched = ["songchange", "onplaypause", "onprogress", "appchange"];
+	const listened = [...modSource.matchAll(/player\.addEventListener\(\s*"([^"]+)"/g)].map(([, name]) => name);
+
+	assert.ok(listened.length > 0, "expected the panel to follow playback");
+	assert.deepEqual(
+		listened.filter((name) => !dispatched.includes(name)),
+		[],
+		`not events the client dispatches; only ${dispatched.join(", ")} ever fire`,
+	);
+});
+
+test("mod.tsx unsubscribes every player listener it registers", () => {
+	// Progress effect re-runs per track, so a listener left behind is one copy
+	// per song change, each still writing state ten times a second.
+	const added = [...modSource.matchAll(/player\.addEventListener\(\s*"([^"]+)"/g)].map(([, name]) => name);
+	const removed = [...modSource.matchAll(/player\.removeEventListener\(\s*"([^"]+)"/g)].map(([, name]) => name);
+
+	assert.deepEqual(
+		[...removed].sort(),
+		[...added].sort(),
+		"a listener that is never removed keeps firing after its panel is gone",
+	);
+});
+
+test("mod.tsx and index.scss agree on every gl- class name", () => {
+	// The class names are the one contract between the two files that nothing
+	// else checks: TypeScript sees neither end of it, so a name changed on one
+	// side renders unstyled and nothing fails. A verified note under a renamed
+	// class would silently never turn yellow.
+	const used = new Set([...modSource.matchAll(/\b(gl-[a-z-]+)\b/g)].map(([, name]) => name));
+	const defined = new Set([...scssSource.matchAll(/\.(gl-[a-z-]+)/g)].map(([, name]) => name));
+
+	assert.ok(used.size > 0, "expected the panel to use its own class names");
+	assert.deepEqual(
+		[...used].filter((name) => !defined.has(name)).sort(),
+		[],
+		"used in markup but styled nowhere, so it renders as plain markup",
+	);
+	assert.deepEqual(
+		[...defined].filter((name) => !used.has(name)).sort(),
+		[],
+		"styled but never rendered, so the rule is dead",
+	);
+});
+
+test("index.scss only reads CSS variables the client actually defines", () => {
+	// Encore defines its palette on .encore-dark-theme / .encore-light-theme and
+	// only for the names it knows. A var() for anything else silently falls back,
+	// and these fallbacks were all written for a dark theme: nine of them, among
+	// them --text-highlight, which the client never defines at all. That is how
+	// hovered lines turned white on white the moment the theme switched to light.
+	//
+	// Each name below is defined in xpui-snapshot.css — check with
+	// `grep -c -- "--<name>:"` in Apps/xpui before adding one.
+	const defined = ["text-base", "text-negative"];
+	const used = [...scssSource.matchAll(/var\((--[a-z-]+)/g)].map(([, name]) => name.slice(2));
+
+	assert.ok(used.length > 0, "expected the panel to follow the theme");
+	assert.deepEqual(
+		[...new Set(used)].filter((name) => !defined.includes(name)).sort(),
+		[],
+		"undefined in the client, so the fallback decides — and it was written for a dark theme",
+	);
 });

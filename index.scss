@@ -31,7 +31,7 @@
 	flex-direction: column;
 	gap: 2px;
 	padding-bottom: 10px;
-	border-bottom: 1px solid var(--base-border-subtle, rgba(255, 255, 255, 0.12));
+	border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent);
 }
 
 .gl-title {
@@ -118,9 +118,16 @@
 	transition: background 120ms ease, color 120ms ease;
 }
 
+/* Every wash in this file is mixed from currentColor rather than read from a
+   theme variable. The client defines its palette only for the names it knows,
+   and a var() for any other name silently falls back — to a value written for a
+   dark theme, which is how hovered lines once went white on a light one. The
+   tinted variables are no safer: under a colour-set theme they are the accent as
+   an opaque block, not a wash. Mixing from the text's own colour needs no
+   variable at all and is right under every theme. */
 .gl-note-start > .gl-line > .gl-text,
 .gl-note-cont > .gl-line > .gl-text {
-	background: var(--text-base-pressable, rgba(255, 255, 255, 0.11));
+	background: color-mix(in srgb, currentColor 11%, transparent);
 }
 
 /* The first line of a span rounds its top, the last its bottom, and a single-line
@@ -143,8 +150,12 @@
 	border-bottom-right-radius: 5px;
 }
 
-/* Hovering any line of a span lifts the whole run and lightens its text, so the
-   words stay readable against the brighter tint.
+/* Hovering any line of a span lifts the whole run.
+
+   The text keeps its own colour rather than being brightened: the wash comes
+   from the theme, so it is light on a dark theme and dark on a light one, and
+   the words already contrast with it. Overriding the colour with a fixed light
+   one instead made hovered lines unreadable the moment the theme was not dark.
 
    The span is marked in JS rather than styled through a sibling combinator: a run
    can be five lines long, and ":hover + .gl-note-cont" only ever reaches the line
@@ -152,8 +163,26 @@
    because the pointer is always somewhere in it. The module knows exactly which
    lines belong to the span, so it says so. */
 .gl-note-hover > .gl-line > .gl-text {
-	background: var(--text-base-pressable-strong, rgba(255, 255, 255, 0.2));
-	color: var(--text-highlight, #fff);
+	background: color-mix(in srgb, currentColor 20%, transparent);
+}
+
+/* Genius marks a note the artist wrote themselves as verified and tints it
+   yellow rather than grey: rgb(255,255,153) at rest, rgb(255,255,100) under the
+   pointer. Both are Genius' own values.
+
+   The text is pinned to black rather than inherited: on a dark theme the
+   inherited light text would vanish into the yellow. Black reads on yellow under
+   either theme, so this is the one place a colour is fixed rather than derived.
+   The hover rule above is overridden rather than skipped, which is why this one
+   carries both classes. */
+.gl-note-verified > .gl-line > .gl-text {
+	background: rgb(255, 255, 153);
+	color: #000;
+}
+
+.gl-note-verified.gl-note-hover > .gl-line > .gl-text {
+	background: rgb(255, 255, 100);
+	color: #000;
 }
 
 /* The blank line Genius writes before a header, as <br><br>.
@@ -172,14 +201,14 @@
 	margin: 2px 0 10px;
 	padding: 12px 14px;
 	border-radius: 10px;
-	background: var(--background-base, rgba(255, 255, 255, 0.06));
-	border-left: 3px solid var(--text-base, #fff);
+	background: color-mix(in srgb, currentColor 6%, transparent);
+	border-left: 3px solid currentColor;
 }
 
 .gl-note + .gl-note {
 	margin-top: 12px;
 	padding-top: 12px;
-	border-top: 1px solid var(--base-border-subtle, rgba(255, 255, 255, 0.12));
+	border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
 }
 
 .gl-note-body {
@@ -319,17 +348,16 @@
 }
 
 /* The current line gets a wash behind its words rather than across the row, so it
-   reads at a glance without competing with the annotation tint. */
+   reads at a glance without competing with the annotation tint — a lighter mix
+   than the notes get is what keeps it in second place. */
 .gl-line-active > .gl-text {
-	background: var(--text-base-pressable, rgba(255, 255, 255, 0.07));
-	color: var(--text-highlight, #fff);
+	background: color-mix(in srgb, currentColor 7%, transparent);
 }
 
 /* An open note is the thing the reader is looking at, so it outranks the playback
    wash and the annotation tint alike. */
 .gl-line-open > .gl-text {
-	background: var(--text-base-pressable-strong, rgba(255, 255, 255, 0.2));
-	color: var(--text-highlight, #fff);
+	background: color-mix(in srgb, currentColor 22%, transparent);
 	font-weight: 600;
 }
 
