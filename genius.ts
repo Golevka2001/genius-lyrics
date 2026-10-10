@@ -163,6 +163,29 @@ const fetchAnnotationUncached = async (referentId: string): Promise<Annotation> 
 /** Referents are immutable per song, so one lookup per id is enough. */
 const annotationCache = createCache(fetchAnnotationUncached);
 
+/** What one pass over the referents has resolved so far. */
+export interface AnnotationBatch {
+	/** Every note that carries a body, accumulated across batches. */
+	notes: Map<string, Annotation>;
+	/**
+	 * Every id that has been answered, including the ones that turned out to
+	 * have no body. The caller needs this to tell "still loading" from "nothing
+	 * to show", which are otherwise the same empty note map.
+	 */
+	settled: string[];
+}
+
+export interface AnnotationOptions {
+	/**
+	 * Stops the pass between batches. client.cosmos.get takes no AbortSignal, so
+	 * the batch in flight still lands — this keeps the rest of them from being
+	 * sent at all, which is most of the work on a 50-referent song.
+	 */
+	signal?: AbortSignal;
+	/** Called after each batch, so the panel can paint notes as they arrive. */
+	onBatch?: (batch: AnnotationBatch) => void;
+}
+
 /**
  * Resolve every annotation referenced by the lyrics, keyed by referent id.
  *
@@ -174,30 +197,41 @@ const annotationCache = createCache(fetchAnnotationUncached);
  * request per id. A rate-limited failure is dropped from the cache, so the next
  * ask retries it.
  */
-export const fetchAnnotations = async (referentIds: string[]): Promise<Map<string, Annotation>> => {
+export const fetchAnnotations = async (
+	referentIds: string[],
+	{ signal, onBatch }: AnnotationOptions = {},
+): Promise<AnnotationBatch> => {
 	const unique = [...new Set(referentIds)];
-	const map = new Map<string, Annotation>();
+	const notes = new Map<string, Annotation>();
+	const settled: string[] = [];
 
 	const BATCH_SIZE = 4;
 	for (let i = 0; i < unique.length; i += BATCH_SIZE) {
-		const batch = unique.slice(i, i + BATCH_SIZE);
-		const settled = await Promise.allSettled(batch.map((id) => annotationCache.get(id)));
+		// The listener moved on, so the batches after this one are requests
+		// nobody would read.
+		if (signal?.aborted) break;
 
-		settled.forEach((result, index) => {
+		const batch = unique.slice(i, i + BATCH_SIZE);
+		const results = await Promise.allSettled(batch.map((id) => annotationCache.get(id)));
+
+		results.forEach((result, index) => {
 			const id = batch[index];
+			settled.push(id);
 			if (result.status === "fulfilled") {
 				// An annotation with no body is remembered as "nothing to show" so
 				// it is not asked for again, but it never enters the map.
-				if (result.value.text) map.set(id, result.value);
+				if (result.value.text) notes.set(id, result.value);
 				return;
 			}
 			// Losing one note is survivable; losing the batch to a rate limit is
 			// worth surfacing.
 			warn("[genius-lyrics] annotation batch failed", id, String(result.reason));
 		});
+
+		onBatch?.({ notes: new Map(notes), settled: [...settled] });
 	}
 
-	return map;
+	return { notes, settled };
 };
 
 const spotifyLyricsCache = createCache(async (trackId: string): Promise<SpotifyLyrics | null> => {

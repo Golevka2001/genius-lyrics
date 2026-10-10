@@ -14,8 +14,16 @@ export interface LineView {
 	text: string;
 	/** Annotations anchored to this line, in page order. */
 	notes: Annotation[];
+	/** Referent ids anchored to this line, whether or not a note has landed. */
+	referentIds: string[];
 	/** True when the line carries at least one note, i.e. it is clickable. */
 	annotated: boolean;
+	/**
+	 * True once every referent on this line has been answered, whether or not
+	 * any of them carried a body. False means the notes are still in flight, and
+	 * the panel must not read the empty note list as "there is nothing here".
+	 */
+	resolved: boolean;
 	/**
 	 * True when Genius verified any note on this line. A verified note is one
 	 * the artist wrote themselves, and it is the one kind the site singles out.
@@ -49,6 +57,12 @@ export interface BuildInput {
 	lines?: LyricLine[];
 	/** Annotations keyed by referent id. */
 	notes?: Map<string, Annotation>;
+	/**
+	 * Referent ids that have been answered. An anchor outside this set is still
+	 * being fetched, which is what keeps a line clickable while its note loads
+	 * instead of waiting for the whole song's worth of them.
+	 */
+	settled?: Set<string>;
 	/** Spotify's timing axis, matched onto the Genius lines by text. */
 	timing?: Array<{ text: string; startTimeMs?: number }>;
 	/** Set when Genius had the song but reported no annotations. */
@@ -108,6 +122,7 @@ export const buildTrackView = ({
 	artist,
 	lines = [],
 	notes = new Map(),
+	settled = new Set(),
 	timing,
 	annotationless,
 }: BuildInput): TrackView => {
@@ -121,11 +136,22 @@ export const buildTrackView = ({
 			.map((id) => notes.get(id))
 			.filter((note): note is Annotation => Boolean(note?.text));
 		const unique = [...new Map(attached.map((note) => [note.referentId, note])).values()];
+
+		// The page says a line is annotated as soon as it carries an anchor, which
+		// is why a highlight can go up long before the note behind it arrives. So a
+		// line counts as annotated while its referents are outstanding, and only
+		// stops counting once they are all answered and none carried a body — an
+		// anchor with no annotation must not stay clickable with nothing to show.
+		const resolved = line.referentIds.every((id) => settled.has(id));
+		const annotated = unique.length > 0 || (line.referentIds.length > 0 && !resolved);
+
 		return {
 			index,
 			text: line.text,
 			notes: unique,
-			annotated: unique.length > 0,
+			referentIds: line.referentIds,
+			annotated,
+			resolved,
 			verified: unique.some((note) => note.verified),
 			startTimeMs: line.startTimeMs,
 			noteStart: line.noteStart,

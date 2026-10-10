@@ -68,10 +68,24 @@ const setState = (next: PanelState) => {
 /** Bumped per load so a slow response for a previous track is discarded. */
 let generation = 0;
 
+/**
+ * The pass over a track's notes, cancelled when the listener moves on.
+ *
+ * Aborting stops the batches that have not been sent yet, which is most of a
+ * long song's work: a popular one carries 50+ referents. The batch in flight is
+ * not cancelled — client.cosmos.get takes no AbortSignal — but the generation
+ * check drops its answer.
+ */
+let inflight: AbortController | null = null;
+
 async function load(item: TrackItem | undefined) {
 	const key = item?.uri ?? "";
 	const mine = ++generation;
 	openLine = null;
+
+	inflight?.abort();
+	const controller = new AbortController();
+	inflight = controller;
 
 	if (!key) {
 		setState({ state: "no-genius", track: null });
@@ -101,17 +115,37 @@ async function load(item: TrackItem | undefined) {
 		}
 
 		const referentIds = [...new Set(lines.flatMap((line) => line.referentIds))];
+		const annotationless = song?.annotationCount === 0;
+
 		// Annotations and the timing axis are independent; a track without
-		// Spotify lyrics still gets its notes.
-		const [notes, timing] = await Promise.all([
-			fetchAnnotations(referentIds),
-			fetchSpotifyLyrics(key).catch(() => null),
-		]);
+		// Spotify lyrics still gets its notes. The axis is one request and decides
+		// whether the lines can follow playback, so it is worth waiting for; the
+		// notes are many and are not.
+		const timing = await fetchSpotifyLyrics(key).catch(() => null);
 		if (mine !== generation) return;
 
-		setState({
-			state: "ready",
-			track: buildTrackView({ title, artist, lines, notes, timing, annotationless: song?.annotationCount === 0 }),
+		// The lyrics and every anchor are known at this point, which is enough to
+		// read the song. Holding the panel on "Loading" until all fifty notes had
+		// arrived meant a popular track sat blank for the length of the whole
+		// fetch, so they stream in behind the first paint instead.
+		const settled = new Set<string>();
+		const paint = (notes: Map<string, Annotation>) => {
+			setState({
+				state: "ready",
+				track: buildTrackView({ title, artist, lines, notes, settled, timing, annotationless }),
+			});
+		};
+
+		paint(new Map());
+
+		await fetchAnnotations(referentIds, {
+			signal: controller.signal,
+			onBatch: (batch) => {
+				if (mine !== generation) return;
+				settled.clear();
+				for (const id of batch.settled) settled.add(id);
+				paint(batch.notes);
+			},
 		});
 	} catch (error) {
 		if (mine !== generation) return;
@@ -269,7 +303,10 @@ const Line = ({
 			h("span", {
 				className: "gl-text",
 				onClick: view.annotated ? onToggle : undefined,
-				onMouseEnter: view.annotated ? () => onHover(view.notes.map((note) => note.referentId)) : undefined,
+				// The line's own anchors, not the notes that have landed: the region
+				// a note spans is known from the page, so hovering it highlights
+				// while the note behind it is still being fetched.
+				onMouseEnter: view.annotated ? () => onHover(view.referentIds) : undefined,
 				onMouseLeave: view.annotated ? () => onHover(null) : undefined,
 				title: view.annotated ? "Show annotation" : undefined,
 				children: view.text,
@@ -279,7 +316,14 @@ const Line = ({
 			? h(
 					"div",
 					{ className: "gl-pop" },
-					view.notes.map((note, index) => h(NoteCard, { key: `${note.referentId}-${index}`, note })),
+					// A line can be clickable before its note exists, so an empty
+					// card here would read as "this line has nothing to say" rather
+					// than "it has not arrived yet".
+					!view.resolved
+						? h("div", { className: "gl-note" }, h("div", { className: "gl-note-text", children: "Loading note…" }))
+						: view.notes.length > 0
+							? view.notes.map((note, index) => h(NoteCard, { key: `${note.referentId}-${index}`, note }))
+							: h("div", { className: "gl-note" }, h("div", { className: "gl-note-text", children: "No note here." })),
 				)
 			: null,
 	);
@@ -382,7 +426,7 @@ const Panel = () => {
 					view,
 					isActive: view.index === activeIndex,
 					isOpen: openLine === view.index,
-					hovered: view.notes.some((note) => hoverIds?.includes(note.referentId)),
+					hovered: hoverIds !== null && view.referentIds.some((id) => hoverIds.includes(id)),
 					onHover: (ids) => {
 						hoverIds = ids;
 						notify();

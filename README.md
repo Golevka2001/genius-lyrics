@@ -85,6 +85,26 @@ A request that never answers is abandoned after eight seconds instead of holding
 the panel on "loading" forever, so a stalled proxy surfaces as an explained
 failure the user can retry rather than an endless spinner.
 
+## Rendering ahead of the notes
+
+Step 4 is the slow one: a popular song carries 50+ referents, and waiting for all
+of them left the panel on "Loading" for the length of the whole fetch. So the
+panel paints as soon as step 3 is done — the lyrics and every annotation anchor are
+already known at that point — and the notes stream in behind it, each batch
+repainting the lines it completed.
+
+An anchor is what marks a line annotated, not the note behind it, so a line is
+clickable and highlighted from the first paint. What is genuinely unknown until a
+note lands is whether that anchor carries a body at all, so `settled` tracks which
+referents have been answered: a line reads "Loading note…" while any of its
+referents are outstanding, and only stops being clickable once they are all
+answered and none of them held a body. The verified tint and the annotated count
+fill in as the notes arrive rather than gating the first paint.
+
+Switching tracks aborts the pass. `client.cosmos.get` takes no `AbortSignal`, so
+the batch in flight is not cancelled — that is most of a long song's work anyway —
+and its answer is dropped by the generation check.
+
 ## Layout
 
 - `logic.ts` — pure parsing and placement, no client imports, runs under `bun test`

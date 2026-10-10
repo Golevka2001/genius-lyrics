@@ -17,6 +17,18 @@ const line = (text: string, referentIds: string[] = []): LyricLine => ({ text, r
 
 const ids = (view: LineView) => view.notes.map((note) => note.referentId);
 
+// An unannotated line, for the tests that only care about the timing axis.
+const viewLine = (index: number, text: string, startTimeMs?: number): LineView => ({
+	index,
+	text,
+	notes: [],
+	referentIds: [],
+	annotated: false,
+	resolved: true,
+	verified: false,
+	startTimeMs,
+});
+
 test("applyTiming matches Spotify's axis onto Genius' lines", () => {
 	const timed = applyTiming(
 		[line("Now, this looks like a job for me"), line("So, everybody, just follow me")],
@@ -119,9 +131,9 @@ test("buildTrackView marks a line verified when any note on it is", () => {
 
 test("activeLineIndex follows playback position", () => {
 	const lines: LineView[] = [
-		{ index: 0, text: "one", notes: [], annotated: false, verified: false, startTimeMs: 1000 },
-		{ index: 1, text: "two", notes: [], annotated: false, verified: false, startTimeMs: 3000 },
-		{ index: 2, text: "three", notes: [], annotated: false, verified: false, startTimeMs: 6000 },
+		viewLine(0, "one", 1000),
+		viewLine(1, "two", 3000),
+		viewLine(2, "three", 6000),
 	];
 	assert.equal(activeLineIndex(lines, 0), -1, "before the first line nothing is active");
 	assert.equal(activeLineIndex(lines, 1500), 0);
@@ -134,10 +146,10 @@ test("activeLineIndex skips lines Spotify has no offset for", () => {
 	// Genius carries section headers and ad-libs that Spotify does not time, so
 	// the axis has holes. The highlight must not stall on one.
 	const lines: LineView[] = [
-		{ index: 0, text: "[Verse 1]", notes: [], annotated: false, verified: false },
-		{ index: 1, text: "first", notes: [], annotated: false, verified: false, startTimeMs: 2000 },
-		{ index: 2, text: "untimed", notes: [], annotated: false, verified: false },
-		{ index: 3, text: "second", notes: [], annotated: false, verified: false, startTimeMs: 5000 },
+		viewLine(0, "[Verse 1]"),
+		viewLine(1, "first", 2000),
+		viewLine(2, "untimed"),
+		viewLine(3, "second", 5000),
 	];
 	assert.equal(activeLineIndex(lines, 100), -1);
 	assert.equal(activeLineIndex(lines, 2500), 1);
@@ -146,14 +158,8 @@ test("activeLineIndex skips lines Spotify has no offset for", () => {
 });
 
 test("hasTimeline reports whether following playback is possible", () => {
-	assert.equal(hasTimeline([{ index: 0, text: "a", notes: [], annotated: false, verified: false }]), false);
-	assert.equal(
-		hasTimeline([
-			{ index: 0, text: "a", notes: [], annotated: false, verified: false },
-			{ index: 1, text: "b", notes: [], annotated: false, verified: false, startTimeMs: 10 },
-		]),
-		true,
-	);
+	assert.equal(hasTimeline([viewLine(0, "a")]), false);
+	assert.equal(hasTimeline([viewLine(0, "a"), viewLine(1, "b", 10)]), true);
 });
 
 test("applyTiming gives repeated choruses their own offsets", () => {
@@ -195,6 +201,76 @@ test("every line of a multi-line note carries the note", () => {
 	assert.deepEqual(ids(track.lines[1]), ["1"], "a continuation keeps the note it is part of");
 	assert.deepEqual(ids(track.lines[2]), ["1"]);
 	assert.deepEqual(ids(track.lines[3]), ["2"], "the next note starts its own region");
+});
+
+test("a line is annotated before its note arrives, or the panel could never be clicked", () => {
+	// The page says a line is annotated as soon as it carries an anchor, so the
+	// highlight has to go up on the first paint rather than after all fifty notes
+	// have been fetched. Nothing has been answered yet here.
+	const track = buildTrackView({
+		title: "t",
+		artist: "a",
+		lines: [line("plain"), line("loading", ["1"])],
+		notes: new Map(),
+		settled: new Set(),
+	});
+
+	assert.equal(track.lines[0].annotated, false, "a line with no anchor is not annotated");
+	assert.equal(track.lines[0].resolved, true, "nothing outstanding, nothing to wait for");
+	assert.equal(track.lines[1].annotated, true, "the anchor alone is enough to offer the note");
+	assert.equal(track.lines[1].resolved, false, "so the panel must not read the empty list as 'no note'");
+	assert.equal(track.annotatedCount, 1);
+});
+
+test("an anchor whose note turns out to be empty stops being annotated", () => {
+	// Not every referent Genius anchors carries a body, and one that does not must
+	// not be left clickable with nothing behind it once that is known.
+	const track = buildTrackView({
+		title: "t",
+		artist: "a",
+		lines: [line("answered but empty", ["1"]), line("answered and real", ["2"])],
+		notes: new Map([["2", note("2", "a real note")]]),
+		settled: new Set(["1", "2"]),
+	});
+
+	assert.equal(track.lines[0].annotated, false, "answered with no body, so nothing to open");
+	assert.equal(track.lines[0].resolved, true);
+	assert.equal(track.lines[1].annotated, true);
+	assert.equal(track.annotatedCount, 1, "the empty one must not be counted");
+});
+
+test("a partially answered line still counts as annotated", () => {
+	// Two referents on one line, one in: the line has a note, and the other is
+	// still on its way.
+	const track = buildTrackView({
+		title: "t",
+		artist: "a",
+		lines: [line("two notes", ["1", "2"])],
+		notes: new Map([["1", note("1", "landed")]]),
+		settled: new Set(["1"]),
+	});
+
+	assert.equal(track.lines[0].annotated, true);
+	assert.equal(track.lines[0].resolved, false, "the second referent is still outstanding");
+});
+
+test("a note that has landed tints verified, and the span is known from the anchors", () => {
+	// The span a note covers comes from the page, so hover highlights it while the
+	// note behind it is still being fetched.
+	const track = buildTrackView({
+		title: "t",
+		artist: "a",
+		lines: [
+			{ text: "first line", referentIds: ["1"] },
+			{ text: "second line", referentIds: ["1"] },
+		],
+		notes: new Map(),
+		settled: new Set(),
+	});
+
+	assert.deepEqual(track.lines[0].referentIds, ["1"]);
+	assert.deepEqual(track.lines[1].referentIds, ["1"]);
+	assert.equal(track.lines[0].verified, false, "nothing verified until the note lands");
 });
 
 test("a note stays on the section header across a blank spacer", () => {
