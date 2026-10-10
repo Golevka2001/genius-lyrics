@@ -75,10 +75,18 @@ Spotify's `color-lyrics` is fetched separately and used only for the timing
 axis; the lyrics shown are Genius', because the annotation anchors belong to
 that copy.
 
+Every request in the chain is cached for the session, one cache per resource:
+searches by query, songs and lyric pages by id/url, referents by id, and Spotify
+lyrics by track. A request still in flight is shared rather than repeated, and a
+failed one is dropped so the next ask retries. Returning to a track therefore
+costs no network at all.
+
 ## Layout
 
 - `logic.ts` — pure parsing and placement, no client imports, runs under `bun test`
 - `view.ts` — the view model (which line shows which notes), also pure
+- `cache.ts` — a pure, per-resource promise cache; the transport wraps its
+  requests in it, runs under `bun test`
 - `genius.ts` — transport only, via `client.cosmos` for JSON and
   `client.corsProxy.fetch` for the HTML page (cosmos parses every body as JSON
   and cannot return an HTML document)
