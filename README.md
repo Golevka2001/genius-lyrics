@@ -81,12 +81,16 @@ lyrics by track. A request still in flight is shared rather than repeated, and a
 failed one is dropped so the next ask retries. Returning to a track therefore
 costs no network at all.
 
+A request that never answers is abandoned after eight seconds instead of holding
+the panel on "loading" forever, so a stalled proxy surfaces as an explained
+failure the user can retry rather than an endless spinner.
+
 ## Layout
 
 - `logic.ts` — pure parsing and placement, no client imports, runs under `bun test`
 - `view.ts` — the view model (which line shows which notes), also pure
-- `cache.ts` — a pure, per-resource promise cache; the transport wraps its
-  requests in it, runs under `bun test`
+- `cache.ts` — a pure, per-resource promise cache with a request timeout; the
+  transport wraps its requests in it, runs under `bun test`
 - `genius.ts` — transport only, via `client.cosmos` for JSON and
   `client.corsProxy.fetch` for the HTML page (cosmos parses every body as JSON
   and cannot return an HTML document)

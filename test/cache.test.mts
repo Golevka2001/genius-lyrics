@@ -5,7 +5,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createCache } from "../cache.ts";
+import { createCache, REQUEST_TIMEOUT } from "../cache.ts";
+
+// A resolved sentinel cannot play this part: it would win every race.
+const never = new Promise<never>(() => {});
 
 function countingFetcher() {
 	const calls: string[] = [];
@@ -73,6 +76,36 @@ test("a failure is not remembered, so the next ask retries", async () => {
 
 	await assert.rejects(cache.get("a"), /nope/);
 
+	assert.equal(await cache.get("a"), "recovered");
+	assert.deepEqual(calls, ["a", "a"]);
+});
+
+test("a request the client never answers is treated as a failure", async (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout"] });
+
+	const cache = createCache(() => new Promise<string>(() => {}));
+
+	const pending = cache.get("a");
+	t.mock.timers.tick(REQUEST_TIMEOUT);
+
+	// Without a bound this would sit loading for the rest of the track.
+	await assert.rejects(Promise.race([pending, never]), /timed out/);
+});
+
+test("a hung request is dropped, so a later ask starts fresh", async (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout"] });
+
+	const calls: string[] = [];
+	const cache = createCache((key: string) => {
+		calls.push(key);
+		return calls.length === 1 ? new Promise<string>(() => {}) : Promise.resolve("recovered");
+	});
+
+	const hung = cache.get("a");
+	t.mock.timers.tick(REQUEST_TIMEOUT);
+	await assert.rejects(Promise.race([hung, never]), /timed out/);
+
+	// The entry has to be gone, or a track that hung once could never recover.
 	assert.equal(await cache.get("a"), "recovered");
 	assert.deepEqual(calls, ["a", "a"]);
 });
