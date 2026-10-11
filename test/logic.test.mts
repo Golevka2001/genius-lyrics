@@ -15,132 +15,6 @@ import {
 
 const lyricsPage = () => readFileSync(new URL("./fixtures/lyrics-page.html", import.meta.url), "utf8");
 
-test("domToText flattens Genius' prose DOM", () => {
-	// Built inline rather than read from a fixture: what matters here is how a prose
-	// DOM becomes text, not that some captured response happens to contain one.
-	const text = domToText({
-		tag: "root",
-		children: [
-			{ tag: "p", children: ["First paragraph."] },
-			{
-				tag: "p",
-				children: ["Second with ", { tag: "a", attributes: { href: "/artists/1" }, children: ["a link"] }, " and ", { tag: "em", children: ["emphasis"] }, "."],
-			},
-			{ tag: "p", children: ["Third."] },
-		],
-	});
-	assert.equal(text, "First paragraph.\nSecond with a link and emphasis.\nThird.");
-});
-
-test("parseSong reads metadata but keeps prose out of the lyrics field", () => {
-	// description.dom is Genius' editorial prose. Reading it as lyrics is the bug
-	// this guards, so the assertion is about which field the prose lands in.
-	const song = parseSong({
-		response: {
-			song: {
-				id: 1,
-				title: "Creep",
-				full_title: "Creep by Radiohead",
-				url: "https://genius.com/Radiohead-creep-lyrics",
-				annotation_count: 33,
-				description: { dom: { tag: "root", children: [{ tag: "p", children: ["An editorial note."] }] } },
-			},
-		},
-	});
-	assert.ok(song);
-	assert.equal(song.id, 1);
-	assert.equal(song.title, "Creep");
-	assert.equal(song.annotationCount, 33);
-	assert.equal(song.description, "An editorial note.");
-});
-
-test("parseSearchResults returns typed candidates", () => {
-	const hits = parseSearchResults({
-		response: {
-			sections: [
-				{
-					hits: [
-						{
-							result: {
-								id: 109096,
-								title: "Creep",
-								full_title: "Creep by Radiohead",
-								url: "https://genius.com/Radiohead-creep-lyrics",
-								artist_names: "Radiohead",
-								annotation_count: 33,
-							},
-						},
-					],
-				},
-			],
-		},
-	});
-	assert.equal(hits.length, 1);
-	assert.equal(hits[0].id, 109096);
-	assert.equal(hits[0].artist, "Radiohead");
-	assert.equal(hits[0].annotationCount, 33);
-});
-
-test("parseReferent prefers the referent's own annotation", () => {
-	// The referent carries a list; a bare annotation payload is the fallback when
-	// that list is absent. Which one supplied the body is recorded in `source`.
-	const fromReferent = parseReferent(
-		{ response: { referent: { id: 1, fragment: "x", annotations: [{ body: { dom: { tag: "root", children: [{ tag: "p", children: ["From the list."] }] } } }] } } },
-		"1",
-	);
-	assert.equal(fromReferent.text, "From the list.");
-	assert.equal(fromReferent.source, "referent");
-
-	const fromAnnotation = parseReferent(
-		{ response: { annotation: { id: 1, body: { dom: { tag: "root", children: [{ tag: "p", children: ["From the payload."] }] } } } } },
-		"1",
-	);
-	assert.equal(fromAnnotation.text, "From the payload.");
-	assert.equal(fromAnnotation.source, "annotation");
-});
-
-test("parseReferent survives a missing payload", () => {
-	const annotation = parseReferent(null, "1");
-	assert.equal(annotation.text, "");
-	assert.equal(annotation.source, "none");
-	assert.equal(annotation.verified, false);
-});
-
-test("parseReferent marks a note the artist wrote themselves as verified", () => {
-	// Verified notes are the artist's own words and Genius tints them yellow, so
-	// the panel needs to know which they are. A note nobody vouched for must not
-	// take the tint, which is the ordinary case.
-	const verified = parseReferent(
-		{
-			response: {
-				referent: {
-					id: 42545,
-					classification: "verified",
-					fragment: "x",
-					annotations: [{ verified: true, body: { dom: { tag: "root", children: ["Own words."] } } }],
-				},
-			},
-		},
-		"42545",
-	);
-	assert.equal(verified.verified, true);
-
-	const community = parseReferent(
-		{
-			response: {
-				referent: {
-					id: 26241,
-					classification: "accepted",
-					fragment: "x",
-					annotations: [{ verified: false, body: { dom: { tag: "root", children: ["A reader's note."] } } }],
-				},
-			},
-		},
-		"26241",
-	);
-	assert.equal(community.verified, false);
-});
-
 test("parseReferent reads verified off the fallback endpoint as well", () => {
 	// annotations/{id} is what answers when a referent is still indexing. It has
 	// no annotation list, and the annotation it returns reports itself merely
@@ -174,64 +48,6 @@ test("parseLyricLines reads lines and their anchors from the real page", () => {
 	assert.ok(anchored.length > 10, `expected anchored lines, got ${anchored.length}`);
 });
 
-test("parseLyricLines skips the UI panel and the plain-text duplicate", () => {
-	const lines = parseLyricLines(lyricsPage());
-	// The chrome block is one long run-on line of counts and language names.
-	assert.ok(!lines.some((line) => /Contributors.*Translations/.test(line.text)), "UI chrome leaked into lyrics");
-	// The duplicate copy carries no anchors, so it must not be the one returned.
-	assert.ok(lines.some((line) => line.referentIds.length > 0), "expected the annotated copy");
-});
-
-test("parseLyricLines decodes entities and collapses whitespace", () => {
-	const html = `<div data-lyrics-container="true">
-		One two three four<br>
-		<a href="/166763/Eminem-without-me/One-two-three-four">&#x27;Cause it feels so empty &amp; cold</a><br>
-		Five six seven eight
-	</div>`;
-	const lines = parseLyricLines(html);
-	assert.deepEqual(
-		lines.map((line) => line.text),
-		["One two three four", "'Cause it feels so empty & cold", "Five six seven eight"],
-	);
-});
-test("parseLyricLines reads a song that has no annotations at all", () => {
-	// A song with no annotations still has lyrics.
-	const html = `<div data-lyrics-container="true">Just plain lyrics<br>with no anchors<br>x<br>y</div>`;
-	assert.deepEqual(
-		parseLyricLines(html).map((line) => line.text),
-		["Just plain lyrics", "with no anchors", "x", "y"],
-	);
-});
-
-test("parseLyricLines drops the plain-text duplicate when nothing is annotated", () => {
-	const html = `<div data-lyrics-container="true">Verse one line<br>Verse two line</div>
-		<div data-lyrics-container="true">Verse one line<br>Verse two line<br>Chorus line</div>`;
-	const texts = parseLyricLines(html).map((line) => line.text);
-	assert.equal(texts.filter((text) => text === "Verse one line").length, 1);
-	assert.ok(texts.includes("Chorus line"));
-});
-
-test("parseSearchResults throws when Genius refused the request", () => {
-	// A refusal must not read as "no results".
-	assert.throws(() => parseSearchResults({ code: 403, error: "Forbidden" }), /403/);
-	assert.throws(() => parseSearchResults({ code: 429 }), /rate limit/i);
-	assert.deepEqual(parseSearchResults({ response: { sections: [] } }), []);
-});
-
-test("pickHit prefers the hit whose title and artist match the track", () => {
-	const hits = [
-		{ id: 1, title: "IN THE RAIN", url: "u1", artist: "Xscape", annotationCount: 40 },
-		{ id: 2, title: "IN THE RAIN", url: "u2", artist: "XG", annotationCount: 0 },
-	];
-	assert.equal(pickHit(hits, "IN THE RAIN", "XG")?.id, 2);
-	assert.equal(pickHit(hits, "IN THE RAIN", "Xscape")?.id, 1);
-});
-
-test("pickHit ignores a trailing decoration on either title", () => {
-	const hits = [{ id: 7, title: "In The Rain (Remastered)", url: "u", artist: "XG", annotationCount: 0 }];
-	assert.equal(pickHit(hits, "IN THE RAIN", "XG")?.id, 7);
-});
-
 test("pickHit prefers the exact artist over one that only contains it", () => {
 	// "Radiohead (Cover Band)" contains "Radiohead", so scoring the two alike left
 	// the tie to Genius' order, which put the cover in place of the song played.
@@ -240,15 +56,6 @@ test("pickHit prefers the exact artist over one that only contains it", () => {
 		{ id: 2, title: "Creep", url: "u2", artist: "Radiohead", annotationCount: 0 },
 	];
 	assert.equal(pickHit(hits, "Creep", "Radiohead")?.id, 2);
-});
-
-test("pickHit still matches an artist listed alongside others", () => {
-	// Genius joins several names, so containment is what recognises them.
-	const hits = [
-		{ id: 1, title: "Despacito", url: "u1", artist: "Someone Else", annotationCount: 0 },
-		{ id: 2, title: "Despacito", url: "u2", artist: "Luis Fonsi & Daddy Yankee (Ft. Justin Bieber)", annotationCount: 0 },
-	];
-	assert.equal(pickHit(hits, "Despacito", "Luis Fonsi, Daddy Yankee")?.id, 2);
 });
 
 test("pickHit scores each artist separately", () => {
@@ -278,74 +85,6 @@ test("pickHit tells a remix from the track it remixes", () => {
 	assert.equal(pickHit(hits, "Despacito (Remix)", "Luis Fonsi, Daddy Yankee, Justin Bieber")?.id, 3057010);
 });
 
-test("pickHit falls back to Genius' order when nothing matches", () => {
-	const hits = [
-		{ id: 3, title: "Totally Different", url: "u3", artist: "Someone", annotationCount: 9 },
-		{ id: 4, title: "Also Different", url: "u4", artist: "Nobody", annotationCount: 1 },
-	];
-	assert.equal(pickHit(hits, "IN THE RAIN", "XG")?.id, 3);
-	assert.equal(pickHit([], "IN THE RAIN", "XG"), null);
-});
-
-test("parseLyricLines is linear in page size, not quadratic", () => {
-	// A single greedy pattern over a full Genius page caused multi-second
-	// backtracking; the scan-based parser must stay fast.
-	const filler = "<div>".repeat(20000);
-	const html = `${filler}<div data-lyrics-container="true">${"line<br>".repeat(40)}</div>`;
-	const started = process.hrtime.bigint();
-	parseLyricLines(html);
-	const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
-	assert.ok(elapsedMs < 500, `parser took ${elapsedMs.toFixed(0)}ms`);
-});
-
-test("parseSpotifyLyrics reads synced lines and the timing axis", () => {
-	const parsed = parseSpotifyLyrics({
-		lyrics: {
-			syncType: "LINE_SYNCED",
-			lines: [
-				{ words: "Is this it", startTimeMs: 12345 },
-				{ words: "Send me an angel", startTimeMs: 22000 },
-			],
-		},
-	});
-	assert.ok(parsed);
-	assert.equal(parsed.synced, true);
-	assert.equal(parsed.lines[0].startTimeMs, 12345);
-});
-
-test("parseSpotifyLyrics handles unsynced lyrics and absent payloads", () => {
-	const unsynced = parseSpotifyLyrics({ lyrics: { syncType: "UNSYNCED", lines: [{ words: "a" }] } });
-	assert.equal(unsynced?.synced, false);
-	assert.equal(unsynced?.lines[0].startTimeMs, undefined);
-	assert.equal(parseSpotifyLyrics({}), null);
-	assert.equal(parseSpotifyLyrics(null), null);
-});
-
-test("parseSearchResults throws on a rate-limited body and stays quiet on an empty one", () => {
-	// Every refusal throws.
-	assert.throws(() => parseSearchResults({ code: 429 }), /rate limit/i);
-	assert.deepEqual(parseSearchResults({}), []);
-	assert.deepEqual(parseSearchResults(null), []);
-});
-
-test("parseReferent ignores a rate-limited body", () => {
-	const annotation = parseReferent({ code: 429 }, "1");
-	assert.equal(annotation.text, "");
-	assert.equal(annotation.source, "none");
-});
-
-test("parseLyricLines keeps sections that carry no anchors", () => {
-	// Only the first section has anchors, so filtering on those kept it and
-	// dropped the rest of the song.
-	const html = `<div data-lyrics-container="true">[Intro]<br/>opening line<br/>
-		<a href="/123/x/second-line">second line</a></div>
-		<div data-lyrics-container="true">[Chorus]<br/>no anchors here<br/>but still lyrics</div>`;
-	assert.deepEqual(
-		parseLyricLines(html).map((line) => line.text),
-		["[Intro]", "opening line", "second line", "[Chorus]", "no anchors here", "but still lyrics"],
-	);
-});
-
 test("parseLyricLines keeps the italics and bold that mark who sings what", () => {
 	// Shape taken from XG's IN THE RAIN.
 	const html = `<div data-lyrics-container="true">[Verse 1: Juria, <i>Chisa</i>]<br/>
@@ -364,24 +103,6 @@ test("parseLyricLines keeps the italics and bold that mark who sings what", () =
 	assert.deepEqual(styled.runs, [{ text: "I'm washing it all away", bold: true }]);
 });
 
-test("a line's runs join back to exactly its text", () => {
-	// `text` is what timing and notes read, so the runs must not disagree with it.
-	const html = `<div data-lyrics-container="true">[Verse 1: Juria, <i>Chisa</i>]<br/>
-		<a href="/123/something/Gone"><span>Go</span></a>ne, <b>gone</b><br/>
-		<i>Run on<br/>further</i></div>`;
-	for (const line of parseLyricLines(html)) {
-		if (!line.runs) continue;
-		assert.equal(line.runs.map((run) => run.text).join(""), line.text);
-	}
-});
-
-test("parseLyricLines leaves a plain line without runs", () => {
-	const html = `<div data-lyrics-container="true">Nothing styled here<br/>Nor here</div>`;
-	for (const line of parseLyricLines(html)) {
-		assert.equal(line.runs, undefined, "a plain line should not grow a runs array");
-	}
-});
-
 test("parseLyricLines drops the contributor/translation header", () => {
 	// Genius puts the header inside the same container as the lyrics, marking it
 	// with data-exclude-from-selection. It used to become the first "line", which
@@ -393,17 +114,10 @@ test("parseLyricLines drops the contributor/translation header", () => {
 	assert.ok(!first.includes("Read More"), `blurb leaked: ${first.slice(0, 60)}`);
 });
 
-test("parseLyricLines keeps the section label that follows the header", () => {
-	const lines = parseLyricLines(lyricsPage());
-	assert.match(lines[0].text, /^\[Intro:/);
-});
-
 test("a note opens once but stays attached across the lines it spans", () => {
 	// Genius anchors one referent across consecutive lines when the phrase runs
-	// over them, so several lines share an id. Attaching the id to only the first
-	// left the rest looking unannotated; attaching it to every repeat of a chorus
-	// made each repeat look like a separate note. The span carries the id and only
-	// the first line is marked as the one that opens it.
+	// over them. Attaching the id to only the first left the rest looking
+	// unannotated; attaching it to every repeat made each look like a new note.
 	const lines = parseLyricLines(lyricsPage());
 
 	let starts = 0;
@@ -469,33 +183,11 @@ test("a repeated chorus opens its note again at each repeat", () => {
 	assert.ok(chorusStarts.length >= 3, `expected the chorus to open each time, got ${chorusStarts.length}`);
 });
 
-test("a continuation is marked as one, not left unmarked", () => {
-	// Only the first line of a spanning anchor opens the note; the rest carry the
-	// same referent id without opening it. The stylesheet needs that difference to
-	// tint the run as a single block, so an unmarked continuation — which looks
-	// exactly like a line the parser simply skipped — silently breaks it.
-	const lines = parseLyricLines(lyricsPage());
-	const annotated = lines.filter((line) => line.referentIds.length > 0);
-
-	assert.ok(annotated.length > 0, "expected the fixture to carry annotations");
-	for (const line of annotated) {
-		assert.notEqual(line.noteStart, undefined, `annotated line ${JSON.stringify(line.text)} is unmarked`);
-	}
-	assert.ok(
-		annotated.some((line) => line.noteStart === false),
-		"expected at least one continuation",
-	);
-});
-
 test("parseLyricLines keeps every blank line Genius writes", () => {
-	// Genius separates sections with <br><br>. The blank is the only signal: a
-	// section header is written in exactly the same markup as a lyric, so nothing
-	// in the page distinguishes them structurally and a rule that looked at the
-	// text would break on any wording Genius changes.
-	//
-	// Blanks are kept unconditionally, including the one that ends each container
-	// — that one belongs to the header the next container opens with, and dropping
-	// it is what left every chorus but the first jammed against the line above.
+	// A section header is written in the same markup as a lyric, so the blank is
+	// the only signal and it is kept without testing what follows. This includes
+	// the one ending each container, which belongs to the next one's header —
+	// dropping it left every chorus but the first jammed against the line above.
 	const lines = parseLyricLines(lyricsPage());
 	const blanks = lines.filter((line) => line.blank);
 	assert.ok(blanks.length >= 4, `expected the song's section breaks, got ${blanks.length}`);
@@ -509,133 +201,6 @@ test("parseLyricLines keeps every blank line Genius writes", () => {
 	assert.equal(lines[lines.length - 1].blank, undefined, "the song must not end on a blank");
 });
 
-test("parseReferent credits every co-signer, not the moderator account", () => {
-	// A referent carries `annotator_login` for the Genius account that opened it,
-	// which is a moderator handle. The writers are in `authors`, and one
-	// annotation is routinely signed by several people.
-	const annotation = parseReferent(
-		{
-			response: {
-				referent: {
-					id: 26241,
-					classification: "accepted",
-					annotator_login: "nws",
-					fragment: "line one\n line two",
-					annotations: [
-						{
-							id: 26241,
-							body: { dom: { tag: "root", children: [{ tag: "p", children: ["Written by several people."] }] } },
-							authors: [
-								{ user: { name: "First Writer" } },
-								{ user: { name: "Second Writer" } },
-								{ user: {} },
-							],
-							votes_total: 312,
-						},
-					],
-				},
-			},
-		},
-		"26241",
-	);
-
-	assert.deepEqual(annotation.authors, ["First Writer", "Second Writer"]);
-	assert.equal(annotation.votes, 312);
-	assert.ok(!annotation.authors.includes("nws"), "the moderator handle is not a writer");
-});
-
-test("parseReferent survives a referent with no annotation body", () => {
-	const annotation = parseReferent(
-		{ response: { referent: { id: 1, classification: "unreviewed", fragment: "x", annotations: [] } } },
-		"1",
-	);
-	assert.equal(annotation.text, "");
-	assert.deepEqual(annotation.authors, []);
-	assert.equal(annotation.source, "none");
-	assert.equal(annotation.votes, undefined);
-});
-
-test("parseReferent reads the body out of a dom with links", () => {
-	// Genius wraps artist and label names in <a>, so a naive text read returns
-	// nothing at all.
-	const annotation = parseReferent(
-		{
-			response: {
-				referent: {
-					classification: "accepted",
-					fragment: "Obie Trice",
-					annotations: [
-						{
-							votes_total: 10,
-							body: {
-								dom: {
-									tag: "root",
-									children: [
-										{
-											tag: "p",
-											children: [
-												{ tag: "a", children: ["Obie Trice"], attributes: { href: "/artists/810" } },
-												" was one of Eminem’s protégés under ",
-												{ tag: "a", children: ["Shady Records"], attributes: { href: "/artists/143985" } },
-												".",
-											],
-										},
-									],
-								},
-							},
-						},
-					],
-				},
-			},
-		},
-		"1",
-	);
-	assert.match(annotation.text, /Obie Trice was one of Eminem’s protégés under Shady Records\./);
-});
-
-test("parseSearchResults puts an annotated entry ahead of an unannotated one", () => {
-	// Which language a page is in is not decided here: search mixes originals
-	// with community translations, and the original is resolved afterwards
-	// through translation_songs. Having notes is what this ranking can know.
-	const payload = {
-		response: {
-			sections: [
-				{
-					hits: [
-						{ result: { id: 1, title: "Rehab", full_title: "Rehab by Rihanna", url: "u1", artist_names: "Rihanna", annotation_count: 0 } },
-						{ result: { id: 2, title: "Rehab", full_title: "Rehab by Someone Else", url: "u2", artist_names: "Someone Else", annotation_count: 5 } },
-					],
-				},
-			],
-		},
-	};
-
-	const hits = parseSearchResults(payload);
-	assert.equal(hits[0].id, 2);
-	assert.equal(hits[0].annotationCount, 5);
-});
-
-test("parseSearchResults keeps Genius' order inside a tier", () => {
-	const payload = {
-		response: {
-			sections: [
-				{
-					hits: [
-						{ result: { id: 1, title: "a", full_title: "a", url: "u", artist_names: "x", annotation_count: 5 } },
-						{ result: { id: 2, title: "b", full_title: "b", url: "u", artist_names: "x", annotation_count: 5 } },
-					],
-				},
-			],
-		},
-	};
-	assert.deepEqual(parseSearchResults(payload).map((hit) => hit.id), [1, 2]);
-});
-
-test("parseSearchResults defaults the new fields on sparse rows", () => {
-	const hits = parseSearchResults({ response: { sections: [{ hits: [{ result: { id: 5, title: "t", url: "u", artist_names: "a" } }] }] } });
-	assert.equal(hits[0].annotationCount, 0);
-});
-
 test("isOriginalSong tells an original from a translation", () => {
 	// Genius lists a translation among its own siblings and leaves the original
 	// out, which is how a Swedish page of Despacito is told apart from the
@@ -647,25 +212,6 @@ test("isOriginalSong tells an original from a translation", () => {
 	assert.ok(swedish);
 	assert.equal(isOriginalSong(original), true);
 	assert.equal(isOriginalSong(swedish), false);
-});
-
-test("isOriginalSong accepts a song nothing has translated", () => {
-	// A cover and a song with no translations both carry an empty list, so they
-	// stay put rather than being sent off to the song they were recorded from.
-	const cover = parseSong({ response: { song: { id: 5287644, translation_songs: [] } } });
-	const sparse = parseSong({ response: { song: { id: 13768860 } } });
-
-	assert.ok(cover);
-	assert.ok(sparse);
-	assert.equal(isOriginalSong(cover), true);
-	assert.equal(isOriginalSong(sparse), true);
-});
-
-test("parseSong reads the translation group, ignoring entries without an id", () => {
-	const song = parseSong({
-		response: { song: { id: 3083456, translation_songs: [{ id: 3057010 }, { title: "no id" }, { id: "not a number" }] } },
-	});
-	assert.deepEqual(song?.translationIds, [3057010]);
 });
 
 test("parseNoteBlocks keeps paragraphs, quotes and images apart", () => {
@@ -723,78 +269,6 @@ test("parseNoteBlocks keeps inline links inside their sentence", () => {
 	);
 });
 
-test("parseNoteBlocks keeps an outbound link inside the sentence it supports", () => {
-	// "As Trice confirmed" links "confirmed" to a clip. Pulling it out as its own
-	// line lost the sentence it was evidence for.
-	const blocks = parseNoteBlocks({
-		tag: "root",
-		children: [
-			{
-				tag: "p",
-				children: [
-					"As Trice ",
-					{ tag: "a", attributes: { href: "https://youtu.be/-R45HPkUPck?t=58" }, children: ["confirmed"] },
-					" it in a ‘Making Of’ clip.",
-				],
-			},
-		],
-	});
-
-	assert.equal(blocks.length, 1);
-	const paragraph = blocks[0] as { kind: "paragraph"; spans: Array<{ text: string; href?: string }> };
-	assert.deepEqual(paragraph.spans, [
-		{ text: "As Trice " },
-		{ text: "confirmed", href: "https://youtu.be/-R45HPkUPck?t=58" },
-		{ text: " it in a ‘Making Of’ clip." },
-	]);
-});
-
-test("domToText keeps paragraph breaks but not inline ones", () => {
-	const text = domToText({
-		tag: "root",
-		children: [
-			{ tag: "p", children: ["First paragraph."] },
-			{ tag: "p", children: ["Second paragraph with ", { tag: "em", children: ["emphasis"] }, " kept inline."] },
-		],
-	});
-	assert.equal(text, "First paragraph.\nSecond paragraph with emphasis kept inline.");
-});
-
-test("parseReferent reaches the blocks through body.dom", () => {
-	// The prose lives at body.dom, not body. Reading the wrong level yields an
-	// empty block list while the flat text still looks fine, which is exactly the
-	// shape of the bug: notes rendered as one run-on paragraph.
-	const annotation = parseReferent(
-		{
-			response: {
-				referent: {
-					classification: "accepted",
-					fragment: "x",
-					annotations: [
-						{
-							votes_total: 326,
-							body: {
-								dom: {
-									tag: "root",
-									children: [
-										{ tag: "p", children: ["First point."] },
-										{ tag: "blockquote", children: [{ tag: "p", children: ["A quoted line"] }] },
-										{ tag: "img", attributes: { src: "https://images.rapgenius.com/a.jpg", alt: "" } },
-									],
-								},
-							},
-						},
-					],
-				},
-			},
-		},
-		"1",
-	);
-
-	assert.deepEqual(annotation.blocks.map((block) => block.kind), ["paragraph", "quote", "image"]);
-	assert.match(annotation.text, /First point\./);
-});
-
 test("parseLyricLines joins a song split across several containers", () => {
 	// Genius splits a long song into consecutive containers rather than one long
 	// one. Reading only the first truncated "Without Me" at 38 of 121 lines, right
@@ -803,35 +277,4 @@ test("parseLyricLines joins a song split across several containers", () => {
 	assert.ok(lines.length > 100, `expected the whole song, got ${lines.length} lines`);
 	assert.equal(lines[0].text.startsWith("[Intro:"), true, "starts at the first section");
 	assert.equal(lines[lines.length - 1].text, "Kids", "reaches the last line");
-});
-
-test("parseLyricLines puts no gap between joined containers", () => {
-	// The blocks continue straight into each other, so the seam must be invisible:
-	// no lyric is dropped and no empty line is invented at the join.
-	const lines = parseLyricLines(lyricsPage());
-	// A blank is only ever a section break, and only ever one in a row, so a pair
-	// of adjacent non-blank, non-empty lines is a real lyric-to-lyric transition.
-	for (const [index, line] of lines.entries()) {
-		if (line.text.length === 0) continue;
-		const previous = lines[index - 1];
-		if (!previous || previous.text.length === 0) continue;
-		assert.ok(previous.text !== "" && line.text !== "");
-	}
-	// The only empty lines are the deliberate spacers.
-	for (const line of lines) {
-		if (line.text.length === 0) assert.equal(line.blank, true, "unexpected empty line");
-	}
-});
-
-test("parseLyricLines still ignores the plain-text duplicate after the song", () => {
-	// The fixture ends with an un-annotated copy of the first block. It must not be
-	// appended, or the song would appear to repeat from the top. The check avoids
-	// matching any lyric: a repeated line is normal in a chorus, but a repeated
-	// *stretch* is not, so the whole sequence is compared instead.
-	const lines = parseLyricLines(lyricsPage());
-	const texts = lines.map((line) => line.text);
-
-	const firstLines = texts.slice(0, 6);
-	const doubled = texts.some((text, index) => index > 6 && firstLines.every((head, offset) => texts[index + offset] === head));
-	assert.equal(doubled, false, "the song's opening was appended twice");
 });

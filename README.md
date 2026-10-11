@@ -1,43 +1,59 @@
 # genius-lyrics
 
-Show lyrics from Genius with the annotations attached to the lines they explain.
+Show Genius' lyrics with the annotations attached to the lines they explain.
 
-Click an annotated line to read the note; a note that spans several lines is
-tinted as one region, and the lyrics and notes are selectable so they can be
-copied.
+Click an annotated line to read the note. A note spanning several lines is tinted as
+one region, and both the lyrics and the notes are selectable.
 
 ## Requirements
 
-**The spicetify daemon has to be running.** This is not a nicety: without it
-this module does not work, and the failure is worth understanding.
-
-Genius never sends `Access-Control-Allow-Origin`, so every request has to go
-through a CORS proxy. `client.corsProxy` walks a chain — the local daemon at
-`http://127.0.0.1:7967/proxy/{url}` first, then spicetify's hosted proxy at
-`cors-proxy.spicetify.app` — but **the hosted one keeps a domain allowlist that
-genius.com is not on**:
+**The spicetify daemon has to be running.** Genius never sends
+`Access-Control-Allow-Origin`, so every request goes through a CORS proxy.
+`client.corsProxy` walks a chain — the local daemon first, then spicetify's hosted
+proxy — but **the hosted one keeps a domain allowlist that genius.com is not on**:
 
 ```console
 $ curl -s https://cors-proxy.spicetify.app/https://genius.com/api/search/song?per_page=1&q=radiohead
 {"error":"Invalid target"}
 ```
 
-so the fallback is dead for this module and the daemon is the only hop that
-carries Genius. The daemon has no allowlist of its own. Requests that reach the
-hosted proxy are refused with `Invalid target`, which is what the panel reports
-when it is missing.
+so the fallback is dead for this module and the daemon is the only hop that carries
+Genius. The daemon has no allowlist of its own, and `Invalid target` is what the
+panel reports when it is missing.
 
-If you would rather not run the daemon, point the proxy at your own service:
+To use another service instead:
 
 ```js
 Spicetify.CORSProxy.configure({ mode: "custom", template: "https://your-proxy/{url}" });
 ```
 
-Genius itself needs no OAuth and no proxy to be reachable; only the browser's
-same-origin policy is in the way. The module never writes this configuration
-itself — that setting belongs to the user, per the module standard.
+The module never writes this configuration itself — it belongs to the user.
 
-## Commands
+## How the data is assembled
+
+Two Genius endpoints both look like lyrics, and only one is:
+
+| Source | What it holds |
+| --- | --- |
+| `/api/songs/{id}` → `description.dom` | editorial prose about the song, not lyrics |
+| the rendered page → `data-lyrics-container` | the lyric lines, each annotated fragment wrapped in `<a href="/<referentId>/…">` |
+
+Spotify's `color-lyrics` is fetched separately and used only for the timing axis;
+the lyrics shown are Genius', because the anchors belong to that copy.
+
+An anchor is what marks a line annotated, not the note behind it, so lines are
+clickable from the first paint. What is unknown until a note lands is whether that
+anchor carries a body at all, so a line reads "Loading note…" while its referents
+are outstanding and only stops being clickable once they are all answered.
+
+Switching tracks aborts the pass. `client.cosmos.get` takes no `AbortSignal`, so the
+batch in flight still lands and its answer is dropped by a generation check.
+
+Entries are cached per resource and expire after ten minutes, the window
+`lyrics-plus` keeps its data for. Expiring by time rather than entry count is what
+keeps the caches from growing for as long as the client stays open.
+
+## Development
 
 ```bash
 bun install       # install dependencies
@@ -47,100 +63,15 @@ bun run build     # bundle into dist/genius-lyrics@<version>
 bun run dev       # watch, rebuild and hot-push into a running client
 ```
 
-To sideload a build into a running client without going through `dev`:
+To sideload a build without going through `dev`:
 
 ```bash
 bunx spicetify-kit install dist/genius-lyrics@0.1.0   # or a .zip from a release
 bunx spicetify-kit pack dist/genius-lyrics@0.1.0      # zip it, prints a sha256
 ```
 
-`bun run dev` and `spicetify-kit install` both need the client listening on
-`--remote-debugging-port=9229`.
+Both need the client listening on `--remote-debugging-port=9229`.
 
-## Shape
-
-This is an **app-shaped module**: it registers a `navlink` entry and owns the
-`/genius-lyrics` route, so the client renders and keeps the page. That matters
-because the playbar and the right sidebar re-render roughly every 300ms — any
-DOM injected into them is dropped again almost immediately, which is why an
-earlier extension-shaped attempt kept flickering.
-
-## How the data is assembled
-
-Genius exposes two different things that both look like "lyrics", and only one
-of them is:
-
-| Source | What it actually holds |
-| --- | --- |
-| `/api/songs/{id}` → `description.dom` | Genius' **editorial prose** about the song ("According to Thom Yorke, …") — not lyrics |
-| the rendered page → `data-lyrics-container` | the **actual lyric lines**, each annotated fragment wrapped in `<a href="/<referentId>/…">` |
-
-The chain is therefore:
-
-1. `search/song` to find the song (query built with `URLSearchParams`; an
-   earlier revision encoded the query itself and double-encoded it, matching
-   nothing)
-2. `songs/{id}` for metadata and the community annotation count
-3. the rendered page, parsed once into `LyricLine { text, referentIds }`
-4. `referents/{id}` per id, falling back to `annotations/{id}`
-5. `attachAnnotations` — a lookup keyed by the page's own anchors
-
-Step 5 is deliberately **not** text matching. A referent fragment often spans a
-line break, and a song's verses are separate lyric blocks, so matching
-fragments back to lines scored 0/10 against real data while reading the anchors
-scores 8/8, including the `accepted` vs `unreviewed` split.
-
-Spotify's `color-lyrics` is fetched separately and used only for the timing
-axis; the lyrics shown are Genius', because the annotation anchors belong to
-that copy.
-
-Every request in the chain is cached for the session, one cache per resource:
-searches by query, songs and lyric pages by id/url, referents by id, and Spotify
-lyrics by track. A request still in flight is shared rather than repeated, and a
-failed one is dropped so the next ask retries. Returning to a track therefore
-costs no network at all.
-
-A request that never answers is abandoned after eight seconds instead of holding
-the panel on "loading" forever, so a stalled proxy surfaces as an explained
-failure the user can retry rather than an endless spinner.
-
-Entries expire after ten minutes, which is the window `lyrics-plus` keeps its
-data for: a song heard again inside it costs nothing, and one heard after it is
-fetched fresh. Expiring by time rather than by entry count is what keeps the
-caches from growing for as long as the client stays open — there is no timer
-behind it, the expired entries are dropped the next time the cache is asked for
-anything.
-
-## Rendering ahead of the notes
-
-Step 4 is the slow one: a popular song carries 50+ referents, and waiting for all
-of them left the panel on "Loading" for the length of the whole fetch. So the
-panel paints as soon as step 3 is done — the lyrics and every annotation anchor are
-already known at that point — and the notes stream in behind it, each batch
-repainting the lines it completed.
-
-An anchor is what marks a line annotated, not the note behind it, so a line is
-clickable and highlighted from the first paint. What is genuinely unknown until a
-note lands is whether that anchor carries a body at all, so `settled` tracks which
-referents have been answered: a line reads "Loading note…" while any of its
-referents are outstanding, and only stops being clickable once they are all
-answered and none of them held a body. The verified tint and the annotated count
-fill in as the notes arrive rather than gating the first paint.
-
-Switching tracks aborts the pass. `client.cosmos.get` takes no `AbortSignal`, so
-the batch in flight is not cancelled — that is most of a long song's work anyway —
-and its answer is dropped by the generation check.
-
-## Layout
-
-- `logic.ts` — pure parsing and placement, no client imports, runs under `bun test`
-- `view.ts` — the view model (which line shows which notes), also pure
-- `cache.ts` — a pure, per-resource promise cache with a request timeout; the
-  transport wraps its requests in it, runs under `bun test`
-- `genius.ts` — transport only, via `client.cosmos` for JSON and
-  `client.corsProxy.fetch` for the HTML page (cosmos parses every body as JSON
-  and cannot return an HTML document)
-- `mod.tsx` — the page, registered as an app route with a navlink entry
-- `test/fixtures/` — a trimmed capture of a real lyrics page, the only fixture:
-  the parsing rules above are all about that markup, and the rest of the tests
-  build their inputs inline
+`test/fixtures/` holds a trimmed capture of a real lyrics page — the only fixture,
+since the parsing rules are all about that markup. Every other test builds its
+inputs inline.

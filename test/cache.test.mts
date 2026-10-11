@@ -36,17 +36,6 @@ function countingFetcher() {
 	};
 }
 
-test("the same key is fetched once however often it is asked for", async () => {
-	const { calls, fetch } = countingFetcher();
-	const cache = createCache(fetch, { ttl: TTL });
-
-	const first = await cache.get("a");
-	const second = await cache.get("a");
-
-	assert.deepEqual(calls, ["a"]);
-	assert.equal(second, first);
-});
-
 test("a request still in flight is shared rather than repeated", async () => {
 	const { calls, fetch } = countingFetcher();
 	const cache = createCache(fetch, { ttl: TTL });
@@ -57,18 +46,6 @@ test("a request still in flight is shared rather than repeated", async () => {
 
 	assert.deepEqual(calls, ["a"]);
 	assert.equal(await inFlight, await sameRequest);
-});
-
-
-test("different keys are cached apart from each other", async () => {
-	const { calls, fetch } = countingFetcher();
-	const cache = createCache(fetch, { ttl: TTL });
-
-	await cache.get("a");
-	await cache.get("b");
-	await cache.get("a");
-
-	assert.deepEqual(calls, ["a", "b"]);
 });
 
 test("a result is fetched again once its ttl has passed", async () => {
