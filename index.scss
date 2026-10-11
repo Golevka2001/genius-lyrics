@@ -124,6 +124,24 @@
 	transition: background 120ms ease, color 120ms ease;
 }
 
+/* Genius marks who sings what with italics and bold. Both properties are set
+   explicitly rather than left to the browser's defaults: the client's own
+   stylesheet sets a heavy weight for elements inside a lyric line, and
+   inheriting from it made every emphasised run render at the same weight and
+   lose the distinction between the two. */
+.gl-emph {
+	font-style: normal;
+	font-weight: inherit;
+}
+
+.gl-emph-italic {
+	font-style: italic;
+}
+
+.gl-emph-bold {
+	font-weight: 700;
+}
+
 /* Every wash in this file is mixed from currentColor rather than read from a
    theme variable. The client defines its palette only for the names it knows,
    and a var() for any other name silently falls back — to a value written for a

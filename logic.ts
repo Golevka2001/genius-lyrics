@@ -434,6 +434,11 @@ const decodeEntities = (value: string) =>
  */
 export interface LyricLine {
 	text: string;
+	/**
+	 * The line split into styled runs, when Genius marked it up. Absent on a plain
+	 * line, so `text` stays the whole answer for every caller that does not care.
+	 */
+	runs?: LyricRun[];
 	/** Referent ids anchored to this line, in document order. */
 	referentIds: string[];
 	/** Spotify's offset, attached later; absent when Spotify has no lyrics. */
@@ -545,8 +550,17 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 		// whether this line is where the note opens.
 		const spanStarts: boolean[] = [];
 		let openIds: string[] = [];
+		// Emphasis still open when the previous line ended, so a tag wrapping a break
+		// keeps styling the lines inside it. The runs of each line are kept as they
+		// are read, because that carry cannot be recomputed later without replaying
+		// the tags from the start of the block.
+		let openEmphasis = new Set<string>();
+		const runsByLine: LyricRun[][] = [];
 
 		for (const raw of pieces) {
+			const { runs, close } = readRuns(raw, openEmphasis);
+			openEmphasis = close;
+			runsByLine.push(runs);
 			// A line that carries an id is the line the note opens on. Genius puts the
 			// id on the first line of the span, and a later line that repeats the same
 			// id is the start of a fresh span, so this is decided by the id alone
@@ -568,6 +582,7 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 
 		for (const [index, raw] of pieces.entries()) {
 			const text = plainText(raw);
+			const runs = trimRuns(runsByLine[index]);
 			// A section header is Genius' own scaffolding, not a lyric, and carries no
 			// annotation of its own. The id seen here belongs to the anchor that opens
 			// after the break, so letting it through would put a note on the header.
@@ -599,9 +614,14 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 			}
 			// Continuations carry an id they inherited, which is what keeps the span
 			// highlighted as one block of lines rather than as separate notes.
+			// Runs are only worth carrying when something is styled. A plain line keeps
+			// its text alone, which is the common case and the shape the panel already
+			// rendered.
+			const emphasised = runs.some((run) => run.italic || run.bold);
 			lines.push({
 				text,
 				referentIds: owned,
+				...(emphasised ? { runs } : {}),
 				...(owned.length > 0 ? { noteStart: isStart } : {}),
 			});
 		}
@@ -612,6 +632,102 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 /** The readable text of one lyrics block, tags stripped and whitespace collapsed. */
 const plainText = (block: string): string =>
 	decodeEntities(block.replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
+
+/** One run of a line, carrying whatever emphasis Genius put on it. */
+export interface LyricRun {
+	text: string;
+	italic?: boolean;
+	bold?: boolean;
+}
+
+/** The emphasis tags Genius uses in a lyrics body, and what each one means. */
+const EMPHASIS_TAGS: Record<string, "italic" | "bold"> = {
+	i: "italic",
+	em: "italic",
+	b: "bold",
+	strong: "bold",
+};
+
+/**
+ * Split one line's markup into text runs, keeping italics and bold.
+ *
+ * Genius marks who sings what with emphasis rather than with a separate credit:
+ * a four-part vocal has one part in italics, another in bold, and the section
+ * header names each singer beside them in the same style. Stripping the tags left
+ * every part looking identical, so the panel showed one flat lyric for a song
+ * whose whole point is that the parts trade lines.
+ *
+ * `open` and `close` are the emphasis still in force from the previous line,
+ * because a tag can wrap a break — "<i>'Cause we had each other<br/>Fought
+ * through the weather</i>" is two lines in one italic — and the run has to be
+ * closed at the end of the line that ends it, exactly as the anchor ids are.
+ */
+const readRuns = (fragment: string, open: Set<string>): { runs: LyricRun[]; close: Set<string> } => {
+	const runs: LyricRun[] = [];
+	const active = new Set(open);
+
+	const push = (raw: string) => {
+		// Everything that is not emphasis markup is stripped before it becomes text,
+		// or the referent anchor's own <span>/<a> tags would end up read as words.
+		const text = decodeEntities(raw.replace(/<[^>]+>/g, ""));
+		if (!text) return;
+		const last = runs[runs.length - 1];
+		const italic = active.has("italic");
+		const bold = active.has("bold");
+		// Runs that differ only by carrying no emphasis are merged, so a line that is
+		// plain throughout stays a single run rather than a fragment per tag.
+		if (last && !!last.italic === italic && !!last.bold === bold) last.text += text;
+		else runs.push({ text, ...(italic ? { italic: true } : {}), ...(bold ? { bold: true } : {}) });
+	};
+
+	let cursor = 0;
+	let match: RegExpExecArray | null;
+	EMPHASIS_PATTERN.lastIndex = 0;
+	while ((match = EMPHASIS_PATTERN.exec(fragment)) !== null) {
+		// Group 1 is the leading slash and group 2 the tag name.
+		const kind = EMPHASIS_TAGS[match[2].toLowerCase()];
+		// Anything that is not a recognised emphasis tag is markup to skip, not
+		// text: the tags come with the referent anchors, which carry ids, not words.
+		push(fragment.slice(cursor, match.index));
+		if (match[1]) active.delete(kind);
+		else active.add(kind);
+		cursor = match.index + match[0].length;
+	}
+	push(fragment.slice(cursor));
+
+	return { runs, close: active };
+};
+
+const EMPHASIS_PATTERN = /<(\/?)(i|em|b|strong)(\s[^>]*)?>/gi;
+
+/**
+ * Drop the runs that carry no words, and push the whitespace hanging off either
+ * end of the line inside it.
+ *
+ * Genius wraps its lines in markup, so a break can leave a run holding only the
+ * indentation between tags — "\n\t" in the markup, nothing on screen. That run is
+ * dropped, and the space that joined two runs is kept on whichever run actually
+ * has text, so joining a line's runs still reproduces its text exactly.
+ */
+const trimRuns = (runs: LyricRun[]): LyricRun[] => {
+	const kept = runs.filter((run) => run.text.trim().length > 0);
+	if (kept.length === 0) return [];
+
+	// A run that is all whitespace between two text runs is the space between two
+	// words. It is appended to the run before it rather than dropped.
+	for (let i = 1; i < runs.length; i++) {
+		const run = runs[i];
+		if (run.text.trim().length > 0 || run.text.length === 0) continue;
+		const previous = kept[kept.indexOf(runs[i - 1])];
+		if (previous) previous.text += run.text;
+	}
+
+	// Leading and trailing whitespace is the line's own indentation, which
+	// `text` trims away; it must not reappear when the runs are rendered.
+	kept[0].text = kept[0].text.replace(/^\s+/, "");
+	kept[kept.length - 1].text = kept[kept.length - 1].text.replace(/\s+$/, "");
+	return kept;
+};
 
 const collectReferentIds = (fragment: string): string[] => {
 	const ids: string[] = [];

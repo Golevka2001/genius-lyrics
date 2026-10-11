@@ -200,7 +200,27 @@ const Line = ({
 				onMouseEnter: view.annotated ? () => onHover(view.referentIds) : undefined,
 				onMouseLeave: view.annotated ? () => onHover(null) : undefined,
 				title: view.annotated ? "Show annotation" : undefined,
-				children: view.text,
+				// Genius marks which part sings what with italics and bold rather than
+				// with a separate credit, so a four-part vocal rendered as flat text
+				// reads as one voice throughout. The runs carry that through; a line
+				// with none is rendered as before.
+				children: view.runs
+					? view.runs.map((run, index) => {
+								// The class names are written out in full rather than assembled
+								// from parts, so the test that checks the markup against index.scss
+								// can see every one of them.
+								const classes = [
+									"gl-emph",
+									...(run.italic ? ["gl-emph-italic"] : []),
+									...(run.bold ? ["gl-emph-bold"] : []),
+								];
+								return h("span", {
+									key: index,
+									className: run.italic || run.bold ? classes.join(" ") : undefined,
+									children: run.text,
+								});
+							})
+					: view.text,
 			}),
 		),
 		isOpen

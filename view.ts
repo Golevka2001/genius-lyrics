@@ -6,12 +6,17 @@
  * tested without a renderer. The component in mod.tsx only maps this to DOM.
  */
 
-import type { Annotation, LyricLine } from "./logic.ts";
+import type { Annotation, LyricLine, LyricRun } from "./logic.ts";
 import { normalize } from "./logic.ts";
 
 export interface LineView {
 	index: number;
 	text: string;
+	/**
+	 * The styled runs, when Genius marked the line up. Absent on a plain line, so
+	 * the renderer falls back to `text` for the common case.
+	 */
+	runs?: LyricRun[];
 	/** Annotations anchored to this line, in page order. */
 	notes: Annotation[];
 	/** Referent ids anchored to this line, whether or not a note has landed. */
@@ -147,6 +152,7 @@ export const buildTrackView = ({
 		return {
 			index,
 			text: line.text,
+			runs: line.runs,
 			notes: unique,
 			referentIds: line.referentIds,
 			annotated,

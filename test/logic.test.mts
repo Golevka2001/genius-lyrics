@@ -294,6 +294,45 @@ test("parseReferent ignores a rate-limited body", () => {
 	assert.equal(annotation.source, "none");
 });
 
+test("parseLyricLines keeps the italics and bold that mark who sings what", () => {
+	// Genius credits each vocal part by styling it, so a stripped tag makes every
+	// part read as the same voice. This is the shape taken from XG's IN THE RAIN.
+	const html = `<div data-lyrics-container="true">[Verse 1: Juria, <i>Chisa</i>]<br/>
+		Rain on my shoulder<br/>
+		<i>'Cause we had each other<br/>Fought through the weather</i><br/>
+		<b>I'm washing it all away</b><br/>
+		<i><b>Goodbye</b></i></div>`;
+
+	const [header, , , , styled] = parseLyricLines(html);
+	assert.deepEqual(header.runs, [
+		{ text: "[Verse 1: Juria, " },
+		{ text: "Chisa", italic: true },
+		{ text: "]" },
+	]);
+	// The italic opens on one line and closes two lines later: both lines keep it.
+	assert.deepEqual(styled.runs, [{ text: "I'm washing it all away", bold: true }]);
+});
+
+test("a line's runs join back to exactly its text", () => {
+	// The timing matcher and the notes both read `text`, so the runs are only a
+	// rendering detail: if they disagreed with it, the same line would highlight as
+	// one thing and read as another.
+	const html = `<div data-lyrics-container="true">[Verse 1: Juria, <i>Chisa</i>]<br/>
+		<a href="/123/something/Gone"><span>Go</span></a>ne, <b>gone</b><br/>
+		<i>Run on<br/>further</i></div>`;
+	for (const line of parseLyricLines(html)) {
+		if (!line.runs) continue;
+		assert.equal(line.runs.map((run) => run.text).join(""), line.text);
+	}
+});
+
+test("parseLyricLines leaves a plain line without runs", () => {
+	const html = `<div data-lyrics-container="true">Nothing styled here<br/>Nor here</div>`;
+	for (const line of parseLyricLines(html)) {
+		assert.equal(line.runs, undefined, "a plain line should not grow a runs array");
+	}
+});
+
 test("parseLyricLines drops the contributor/translation header", () => {
 	// Genius puts the header inside the same container as the lyrics, marking it
 	// with data-exclude-from-selection. It used to become the first "line", which
