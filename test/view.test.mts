@@ -201,6 +201,11 @@ test("every line of a multi-line note carries the note", () => {
 	assert.deepEqual(ids(track.lines[1]), ["1"], "a continuation keeps the note it is part of");
 	assert.deepEqual(ids(track.lines[2]), ["1"]);
 	assert.deepEqual(ids(track.lines[3]), ["2"], "the next note starts its own region");
+
+	// This is the case the header was wrong about: one note spanning three lines
+	// was reported as three annotations, and as seven on the song it was read from.
+	assert.equal(track.annotatedCount, 4, "every line in either span is annotated");
+	assert.equal(track.annotationCount, 2, "but there are only two notes");
 });
 
 test("a line is annotated before its note arrives, or the panel could never be clicked", () => {
@@ -220,6 +225,10 @@ test("a line is annotated before its note arrives, or the panel could never be c
 	assert.equal(track.lines[1].annotated, true, "the anchor alone is enough to offer the note");
 	assert.equal(track.lines[1].resolved, false, "so the panel must not read the empty list as 'no note'");
 	assert.equal(track.annotatedCount, 1);
+	// The anchor is on show before its note is, so the count starts at nothing and
+	// climbs as the batches land. Counting the anchors instead would promise a
+	// number the viewer may never be given.
+	assert.equal(track.annotationCount, 0);
 });
 
 test("an anchor whose note turns out to be empty stops being annotated", () => {
@@ -237,6 +246,7 @@ test("an anchor whose note turns out to be empty stops being annotated", () => {
 	assert.equal(track.lines[0].resolved, true);
 	assert.equal(track.lines[1].annotated, true);
 	assert.equal(track.annotatedCount, 1, "the empty one must not be counted");
+	assert.equal(track.annotationCount, 1, "and there is one note behind it");
 });
 
 test("a partially answered line still counts as annotated", () => {

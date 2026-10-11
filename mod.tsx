@@ -335,7 +335,11 @@ const Panel = () => {
 			h("div", { className: "gl-artist", children: track.artist }),
 			h("div", {
 				className: "gl-count",
-				children: `${track.annotatedCount} annotated ${track.annotatedCount === 1 ? "line" : "lines"}`,
+				// How many notes there are, not how many lines they cover: one annotation
+				// anchored across a phrase spans several lines, and counting those
+				// lines reported seven notes on a song that has one. The note count
+				// climbs as the batches land, which is what the viewer is waiting for.
+				children: `${track.annotationCount} ${track.annotationCount === 1 ? "annotation" : "annotations"}`,
 			}),
 		),
 		track.annotationless

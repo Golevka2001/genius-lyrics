@@ -49,6 +49,14 @@ export interface TrackView {
 	lines: LineView[];
 	/** Number of lines with at least one annotation. */
 	annotatedCount: number;
+	/**
+	 * How many distinct annotations the song carries.
+	 *
+	 * Not the same as the number of annotated lines: Genius anchors one note across
+	 * every line a phrase spans, so a single annotation can light seven lines. The
+	 * line count read as seven notes on a song that has one.
+	 */
+	annotationCount: number;
 	/** Where the lyrics came from, shown in the footer. */
 	source: "genius" | "spotify" | "none";
 	/** Set when Genius has the song but no annotations for it. */
@@ -166,11 +174,18 @@ export const buildTrackView = ({
 
 	const annotatedCount = views.filter((view) => view.annotated).length;
 
+	// Counted from the notes rather than from the anchors: Genius repeats one
+	// referent id across every line a phrase spans, so counting anchors counts the
+	// lines of a span as if each were its own note. `notes` is already keyed by
+	// referent id, so this is a count of distinct notes with nothing to dedupe.
+	const annotationCount = notes.size;
+
 	return {
 		title,
 		artist,
 		lines: views,
 		annotatedCount,
+		annotationCount,
 		source: views.length > 0 ? "genius" : "none",
 		annotationless: views.length > 0 && annotatedCount === 0 ? true : annotationless,
 	};
