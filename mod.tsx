@@ -8,7 +8,7 @@
  */
 
 import type { ModuleRuntimeContext } from "/modules/stdlib/mod.ts";
-import { NavLink, Platform, PlaybarButton, React, client, createRegistrar, warn } from "/modules/stdlib/mod.ts";
+import { NavLink, React, client, createRegistrar, warn } from "/modules/stdlib/mod.ts";
 import { detectFailure, fetchAnnotations, fetchLyrics, fetchOriginalSong, fetchSpotifyLyrics, searchSong } from "./genius.ts";
 import type { Annotation, NoteBlock, NoteSpan } from "./logic.ts";
 import { createPanel, type TrackItem } from "./panel.ts";
@@ -410,8 +410,7 @@ const ROUTE = "/genius-lyrics";
  * margin the source file carries, so the face fills the icon box.
  *
  * No colours are set, matching the other app modules: the client tints nav icons
- * itself and decides the active and inactive states. Both the nav link and the
- * playbar button read this one constant, so replacing it rebrands the module.
+ * itself and decides the active and inactive states.
  */
 const ICON =
 	'<g fill="currentColor" transform="translate(-3.84 -4.66) scale(0.023)"><path d="M264 259h60l18 2 1 10 1 2v55c0 15 0 15-5 22l-5 5a220 220 0 0 0-43 219l1 8-5 4q-7-1-11-5l-2-2q-25-18-45-44l-2-3q-38-54-38-120v-2q0-52 25-98l1-2c9-16 29-51 49-51M510 258h54q5 2 8 6l2 3c18 22 41 60 39 89q-2 4-5 4h-17l-3 1h-6q-2 5-2 9v49a82 82 0 0 1-20 56l-2 3a78 78 0 0 1-56 24q-34 1-58-23a75 75 0 0 1-22-51q0-3 3-5l8-1q31-6 51-30 15-21 15-46v-77l3-9z"/><path d="M740 263c7 1 12 8 16 13l2 3c42 47 68 107 78 169l1 3q8 51-1 102l-1 3q-15 91-73 162l-1 2-24 25-1 1-25 22q-23 19-49 33l-2 1a344 344 0 0 1-323 1l-2-1a328 328 0 0 1-70-50l-3-3q-3-4-2-9l3-3q10 1 20 5a360 360 0 0 0 352-69l2-2 40-41 3-4a357 357 0 0 0 57-345l-1-4-1-3v-9q2-2 5-2"/></g>';
@@ -428,19 +427,4 @@ export default function (ctx: ModuleRuntimeContext) {
 		React.createElement(NavLink, { localizedApp: "Genius Lyrics", appRoutePath: ROUTE, icon: ICON, activeIcon: ICON }),
 	);
 	registrar.registerRoute(ROUTE, React.createElement(App));
-
-	// The playbar button only navigates, which keeps a visible entry point even
-	// when the nav link is scrolled out of sight.
-	registrar.register(
-		"playbarButton",
-		React.createElement(PlaybarButton, {
-			label: "Genius lyrics",
-			icon: ICON,
-			onClick: () => {
-				const history = Platform.getHistory();
-				if (history.location.pathname !== ROUTE) history.push(ROUTE);
-				else history.goBack();
-			},
-		}),
-	);
 }
