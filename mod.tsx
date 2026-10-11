@@ -19,18 +19,15 @@ const h = React.createElement;
 /**
  * Genius' own vote icon, inline SVG source.
  *
- * The glyph genius.com draws next to a note's vote count, kept as the site draws
- * it rather than as a lookalike: it is a 24-grid drawing of its own, so the
- * viewBox travels with it instead of being the client's. Markup rather than a
- * <path> because the wrapper is set through innerHTML.
+ * The glyph genius.com draws beside a note's vote count, kept as the site draws it
+ * rather than as a lookalike: it is a 24-grid drawing of its own, so the viewBox
+ * travels with it. Markup rather than a <path> because the wrapper is set through
+ * innerHTML.
  */
 const THUMB_UP =
 	'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" height="16" width="16" fill="currentColor">' +
 	'<path d="M16.52 21.29H6V8.5l.84-.13a3.45 3.45 0 0 0 1.82-1.09 13.16 13.16 0 0 0 .82-1.85c1.06-2.69 2-4.78 3.52-5.31a2.06 2.06 0 0 1 1.74.17c2.5 1.42 1 5 .16 6.95-.11.27-.25.6-.31.77a.78.78 0 0 0 .6.36h4.1a2.29 2.29 0 0 1 2.37 2.37c0 .82-1.59 5.4-2.92 9.09a2.39 2.39 0 0 1-2.22 1.46zm-8.52-2h8.56a.48.48 0 0 0 .31-.17c1.31-3.65 2.73-7.82 2.79-8.44 0-.22-.1-.32-.37-.32h-4.1A2.61 2.61 0 0 1 12.54 8 4.29 4.29 0 0 1 13 6.46c.45-1.06 1.64-3.89.7-4.43-.52 0-1.3 1.4-2.38 4.14a10 10 0 0 1-1.13 2.38A5.28 5.28 0 0 1 8 10.11zM0 8.4h4.86v12.96H0z"/>' +
 	"</svg>";
-
-/** Panel width, clamped to the viewport when the surface is shown. */
-const PANEL_WIDTH = 380;
 
 /** Node of the highlighted line, kept so it can be scrolled into view. */
 let activeRef: { current: HTMLElement | null } | { current: null } = { current: null };
@@ -57,8 +54,8 @@ const Span = ({ span }: { span: NoteSpan }) => {
 	const href = "href" in span ? span.href : undefined;
 	if (!href) return span.text;
 
-	// No distinction between Genius' own pages and everything else: the module
-	// is not on genius.com, so every link is simply somewhere else to go.
+	// No distinction between Genius' own pages and everything else: the module is
+	// not on genius.com, so every link is simply somewhere else to go.
 	return h("a", { className: "gl-link", href, target: "_blank", rel: "noopener noreferrer" }, span.text);
 };
 
@@ -110,7 +107,7 @@ const NoteCard = ({ note }: { note: Annotation }) =>
 		"div",
 		{ className: "gl-note" },
 		// Genius shows neither an approval badge nor contributor names on a note,
-		// so neither is rendered here; the vote count is the only meta it shows.
+		// so the vote count is the only meta rendered.
 		h(NoteBody, { blocks: note.blocks, fallback: note.text }),
 		note.votes !== undefined
 			? h(
@@ -120,8 +117,6 @@ const NoteCard = ({ note }: { note: Annotation }) =>
 						"span",
 						{
 							className: "gl-vote-icon",
-							// Genius' own thumb, the same glyph the site puts
-							// beside a note's vote count.
 							dangerouslySetInnerHTML: { __html: THUMB_UP },
 							"aria-hidden": "true",
 						},
@@ -152,33 +147,26 @@ const Line = ({
 		{
 			className: [
 				"gl-line-wrap",
-				// A note that spans several lines is shown the way Genius shows it: the
-				// annotated words carry a tint, and hovering any line of the span
-				// brightens the whole run so it reads as one marked region.
+				// Hovering any line of a span lights the whole run, so it reads as one
+				// marked region. Driven from the panel rather than CSS: a `:has()` test
+				// on the list would light every annotated line, and a sibling combinator
+				// only reaches the line below.
 				view.annotated ? (view.noteStart === false ? " gl-note-cont" : " gl-note-start") : "",
-				// Genius colours a note the artist wrote itself yellow rather than
-				// grey; every other note looks alike.
+				// Genius tints a note the artist wrote itself yellow; the rest are alike.
 				view.verified ? " gl-note-verified" : "",
 				view.blank ? " gl-blank" : "",
-				// Driven from the panel rather than from CSS: the pointer is always
-				// inside the line list, so a `:has()` test on the list would light
-				// every annotated line, and a sibling combinator only reaches the line
-				// below. The module knows which lines share a span, so it marks them.
 				hovered && view.annotated ? " gl-note-hover" : "",
 			]
 				.filter(Boolean)
 				.join(" "),
 			ref: isActive ? activeRef : undefined,
 		},
-		// The row is a keyboard affordance and nothing else: the role and the tab
-		// stop are here so a note can be opened without a pointer, and Enter/Space
-		// is handled below for the same reason. Nothing about selection hangs on the
-		// element choice — a <button> here would inherit the page's `user-select:
-		// text` just the same.
+		// A div rather than a button: both inherit the page's `user-select: text`, so
+		// the role and tab stop below are what make the row keyboard reachable.
 		//
-		// The pointer handlers sit on the text rather than the row: Genius marks the
-		// words, and a hit area spanning the full width would light up when the
-		// cursor is nowhere near the lyric.
+		// The pointer handlers sit on the text rather than the row, since Genius marks
+		// the words and a full-width hit area would light up when the cursor is
+		// nowhere near the lyric.
 		h(
 			"div",
 			{
@@ -194,28 +182,25 @@ const Line = ({
 			h("span", {
 				className: "gl-text",
 				onClick: view.annotated ? onToggle : undefined,
-				// The line's own anchors, not the notes that have landed: the region
-				// a note spans is known from the page, so hovering it highlights
-				// while the note behind it is still being fetched.
+				// The line's own anchors, not the notes that landed: the span is known
+				// from the page, so it highlights while its note is still in flight.
 				onMouseEnter: view.annotated ? () => onHover(view.referentIds) : undefined,
 				onMouseLeave: view.annotated ? () => onHover(null) : undefined,
 				title: view.annotated ? "Show annotation" : undefined,
-				// Genius marks each vocal part with italics or bold; a line without
-				// them renders as before.
 				children: view.runs
 					? view.runs.map((run, index) => {
-								// Spelled out so the class-name test can see them.
-								const classes = [
-									"gl-emph",
-									...(run.italic ? ["gl-emph-italic"] : []),
-									...(run.bold ? ["gl-emph-bold"] : []),
-								];
-								return h("span", {
-									key: index,
-									className: run.italic || run.bold ? classes.join(" ") : undefined,
-									children: run.text,
-								});
-							})
+							// Spelled out so the class-name test can see them.
+							const classes = [
+								"gl-emph",
+								...(run.italic ? ["gl-emph-italic"] : []),
+								...(run.bold ? ["gl-emph-bold"] : []),
+							];
+							return h("span", {
+								key: index,
+								className: run.italic || run.bold ? classes.join(" ") : undefined,
+								children: run.text,
+							});
+						})
 					: view.text,
 			}),
 		),
@@ -363,9 +348,8 @@ const Panel = () => {
 /**
  * The page body.
  *
- * Data loads here rather than at module load so opening the page is what
- * triggers a fetch — by then the player is populated and the user has actually
- * asked for this track.
+ * Data loads here rather than at module load so opening the page is what triggers
+ * a fetch — by then the player is populated and the user has asked for this track.
  */
 const App = () => {
 	const currentTrack = () => client.player.data?.item as TrackItem | undefined;
@@ -385,11 +369,8 @@ const App = () => {
 		return () => clearInterval(timer);
 	}, []);
 
-	// Follow the track while the page stays open.
 	React.useEffect(() => {
-		const onChange = () => {
-			void panel.load(currentTrack());
-		};
+		const onChange = () => void panel.load(currentTrack());
 		client.player.addEventListener("songchange", onChange);
 		return () => client.player.removeEventListener("songchange", onChange);
 	}, []);
@@ -418,10 +399,9 @@ const ICON =
 export default function (ctx: ModuleRuntimeContext) {
 	const registrar = createRegistrar(ctx);
 
-	// An app-shaped module owns a whole page: the client renders the route into
-	// its main view and keeps it mounted, so nothing here has to survive the
-	// playbar's or the right sidebar's frequent re-renders. That is the whole
-	// reason to take this shape instead of injecting into a client container.
+	// An app-shaped module owns a whole page: the client renders the route into its
+	// main view and keeps it mounted, so nothing here has to survive the frequent
+	// re-renders of the surfaces around it.
 	registrar.register(
 		"navlink",
 		React.createElement(NavLink, { localizedApp: "Genius Lyrics", appRoutePath: ROUTE, icon: ICON, activeIcon: ICON }),

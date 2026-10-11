@@ -188,9 +188,9 @@ export interface AnnotationBatch {
 
 export interface AnnotationOptions {
 	/**
-	 * Stops the pass between batches. client.cosmos.get takes no AbortSignal, so
-	 * the batch in flight still lands — this keeps the rest of them from being
-	 * sent at all, which is most of the work on a 50-referent song.
+	 * Stops the pass between batches. client.cosmos.get takes no AbortSignal, so the
+	 * batch in flight still lands — this keeps the rest from being sent at all,
+	 * which is most of the work on a 50-referent song.
 	 */
 	signal?: AbortSignal;
 	/** Called after each batch, so the panel can paint notes as they arrive. */
@@ -201,12 +201,10 @@ export interface AnnotationOptions {
  * Resolve every annotation referenced by the lyrics, keyed by referent id.
  *
  * Fetched in small batches: a popular song carries 50+ referents at roughly a
- * second each, and requesting them all at once trips Genius' rate limiter.
- *
- * The cache sits under the batching, so an id already held or still in flight
- * resolves without spending a slot, and two loads that overlap share one
- * request per id. A rate-limited failure is dropped from the cache, so the next
- * ask retries it.
+ * second each, and requesting them all at once trips Genius' rate limiter. The
+ * cache sits under the batching, so an id already held or in flight resolves
+ * without spending a slot and two overlapping loads share one request per id. A
+ * rate-limited failure is dropped from the cache, so the next ask retries it.
  */
 export const fetchAnnotations = async (
 	referentIds: string[],
@@ -273,15 +271,12 @@ export const fetchSpotifyLyrics = (trackUri: string): Promise<SpotifyLyrics | nu
 };
 
 /**
- * Report why Genius is unreachable, so the UI can explain a failure instead of
- * showing nothing.
+ * Report why Genius is unreachable, so the UI can explain a failure.
  *
- * The "Invalid target" wording is worth spelling out: the hosted proxy answers
- * that way only for a host missing from its allowlist, and genius.com is one of
- * them, so it is what a client with no daemon to fall back on gets. It is a
- * missing daemon rather than a misconfiguration, and saying so is the difference
- * between the user starting something and the user going to look at their proxy
- * settings.
+ * "Invalid target" is worth spelling out: the hosted proxy answers that way only
+ * for a host missing from its allowlist, and genius.com is one, so it is what a
+ * client with no daemon to fall back on gets. Saying so is the difference between
+ * the user starting something and going to look at their proxy settings.
  */
 export const detectFailure = (error: unknown): string => {
 	const text = String((error as { message?: string })?.message ?? error);

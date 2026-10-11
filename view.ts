@@ -21,15 +21,12 @@ export interface LineView {
 	/** True when the line carries at least one note, i.e. it is clickable. */
 	annotated: boolean;
 	/**
-	 * True once every referent on this line has been answered, whether or not
-	 * any of them carried a body. False means the notes are still in flight, and
-	 * the panel must not read the empty note list as "there is nothing here".
+	 * True once every referent on this line has been answered, whether or not any
+	 * carried a body. False means the notes are still in flight, and the panel must
+	 * not read the empty note list as "there is nothing here".
 	 */
 	resolved: boolean;
-	/**
-	 * True when Genius verified any note on this line. A verified note is one
-	 * the artist wrote themselves, and it is the one kind the site singles out.
-	 */
+	/** True when Genius verified any note on this line, i.e. the artist wrote it. */
 	verified: boolean;
 	/** Spotify's start offset, when a synced axis was found. */
 	startTimeMs?: number;
@@ -122,20 +119,19 @@ export const buildTrackView = ({
 	notes = new Map(),
 	settled = new Set(),
 }: BuildInput): TrackView => {
-	// Every line of a spanning anchor carries the same referent id, so this one
-	// lookup attaches the note and marks the lines that share it at once — which
-	// is what lets hovering any line of a multi-line note light all of it.
 	const views: LineView[] = lines.map((line, index) => {
+		// Every line of a spanning anchor carries the same referent id, so this one
+		// lookup attaches the note and marks the lines that share it at once — which
+		// is what lets hovering any line of a multi-line note light all of it.
 		const attached = line.referentIds
 			.map((id) => notes.get(id))
 			.filter((note): note is Annotation => Boolean(note?.text));
 		const unique = [...new Map(attached.map((note) => [note.referentId, note])).values()];
 
-		// The page says a line is annotated as soon as it carries an anchor, which
-		// is why a highlight can go up long before the note behind it arrives. So a
-		// line counts as annotated while its referents are outstanding, and only
-		// stops counting once they are all answered and none carried a body — an
-		// anchor with no annotation must not stay clickable with nothing to show.
+		// The page says a line is annotated as soon as it carries an anchor, which is
+		// why a highlight goes up long before the note behind it arrives. So a line
+		// counts as annotated while its referents are outstanding, and stops once
+		// they are all answered and none carried a body.
 		const resolved = line.referentIds.every((id) => settled.has(id));
 		const annotated = unique.length > 0 || (line.referentIds.length > 0 && !resolved);
 
@@ -156,8 +152,7 @@ export const buildTrackView = ({
 
 	const annotatedCount = views.filter((view) => view.annotated).length;
 
-	// From the notes, not the anchors: one referent id is repeated across the
-	// lines of a span. `notes` is already keyed by id, so nothing to dedupe.
+	// From the notes, not the anchors, since one id repeats across a span's lines.
 	const annotationCount = notes.size;
 
 	return {
@@ -170,7 +165,7 @@ export const buildTrackView = ({
 	};
 };
 
-/** Distinguish the states a track can be in, so the view can explain itself. */
+/** The states a track can be in, so the view can explain itself. */
 export type ViewState = "loading" | "ready" | "no-genius" | "failed";
 
 export interface PanelState {

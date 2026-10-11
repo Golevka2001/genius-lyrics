@@ -1,11 +1,9 @@
 /*
  * The panel's state and its data chain, with the transport passed in.
  *
- * This is the half of the panel that decides what is on screen, kept apart from
- * the React tree so the ordering can be tested without a renderer. The transport
- * is injected because it is the only reason this file cannot be exercised under
- * `bun test` on its own: every decision below is about *when* a request happens
- * and *what* survives a track change.
+ * This half decides what is on screen and is kept apart from the React tree so the
+ * ordering can be tested without a renderer. The transport is injected because it
+ * is the only reason this file cannot run under `bun test` on its own.
  */
 
 import { pickHit, type Annotation, type GeniusSong, type LyricLine, type SongHit, type SpotifyLyrics } from "./logic.ts";
@@ -31,7 +29,6 @@ export interface Transport {
 }
 
 export interface Panel {
-	/** The current panel state, for the tree to render. */
 	readonly state: PanelState;
 	/** Which line's notes are open, or null when the panel shows plain lyrics. */
 	readonly openLine: number | null;
@@ -64,10 +61,9 @@ export function createPanel(transport: Transport): Panel {
 	/**
 	 * The pass over a track's notes, cancelled when the listener moves on.
 	 *
-	 * Aborting stops the batches that have not been sent yet, which is most of a
-	 * long song's work: a popular one carries 50+ referents. The batch in flight is
-	 * not cancelled — client.cosmos.get takes no AbortSignal — but the generation
-	 * check drops its answer.
+	 * Aborting stops the batches not yet sent, which is most of a long song's work.
+	 * The batch in flight is not cancelled — client.cosmos.get takes no AbortSignal —
+	 * but the generation check drops its answer.
 	 */
 	let inflight: AbortController | null = null;
 
@@ -144,15 +140,14 @@ export function createPanel(transport: Transport): Panel {
 			// payload carries offsets.
 			const timing = lyrics?.synced ? lyrics.lines : undefined;
 
-			// Matched onto Genius' lines once, here: the view is rebuilt for every
-			// batch of notes that lands, and this walks both sides of the match each
-			// time for a result that cannot change.
+			// Matched onto Genius' lines once, here: the view is rebuilt for every batch
+			// of notes that lands, and this walks both sides each time for a result
+			// that cannot change.
 			const timed = applyTiming(lines, timing);
 
-			// The lyrics and every anchor are known at this point, which is enough to
-			// read the song. Holding the panel on "loading" until all fifty notes had
-			// arrived meant a popular track sat blank for the length of the whole
-			// fetch, so they stream in behind the first paint instead.
+			// The lyrics and every anchor are known, which is enough to read the song.
+			// Waiting on all fifty notes first left a popular track blank for the
+			// length of the fetch, so they stream in behind the first paint instead.
 			const notes = new Map<string, Annotation>();
 			const settled = new Set<string>();
 			const paint = () => {
