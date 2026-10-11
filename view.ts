@@ -12,10 +12,7 @@ import { normalize } from "./logic.ts";
 export interface LineView {
 	index: number;
 	text: string;
-	/**
-	 * The styled runs, when Genius marked the line up. Absent on a plain line, so
-	 * the renderer falls back to `text` for the common case.
-	 */
+	/** Styled runs, when Genius marked the line up. */
 	runs?: LyricRun[];
 	/** Annotations anchored to this line, in page order. */
 	notes: Annotation[];
@@ -50,11 +47,9 @@ export interface TrackView {
 	/** Number of lines with at least one annotation. */
 	annotatedCount: number;
 	/**
-	 * How many distinct annotations the song carries.
-	 *
-	 * Not the same as the number of annotated lines: Genius anchors one note across
-	 * every line a phrase spans, so a single annotation can light seven lines. The
-	 * line count read as seven notes on a song that has one.
+	 * How many distinct annotations the song carries. Not the annotated line count:
+	 * Genius anchors one note across every line a phrase spans, so one annotation
+	 * can light seven lines.
 	 */
 	annotationCount: number;
 	/** Where the lyrics came from, shown in the footer. */
@@ -174,10 +169,8 @@ export const buildTrackView = ({
 
 	const annotatedCount = views.filter((view) => view.annotated).length;
 
-	// Counted from the notes rather than from the anchors: Genius repeats one
-	// referent id across every line a phrase spans, so counting anchors counts the
-	// lines of a span as if each were its own note. `notes` is already keyed by
-	// referent id, so this is a count of distinct notes with nothing to dedupe.
+	// From the notes, not the anchors: one referent id is repeated across the
+	// lines of a span. `notes` is already keyed by id, so nothing to dedupe.
 	const annotationCount = notes.size;
 
 	return {

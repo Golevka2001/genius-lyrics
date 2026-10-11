@@ -97,8 +97,7 @@ export function createPanel(transport: Transport): Panel {
 			const hits = await transport.searchSong(title, artist);
 			if (mine !== generation) return;
 
-			// Genius' relevance order can put a same-titled song by another artist
-			// first, so the hit is chosen by title/artist match rather than position.
+			// Genius' order can put a same-titled song by another artist first.
 			const hit = pickHit(hits, title, artist);
 			if (!hit) {
 				setState({ state: "no-genius", track: buildTrackView({ title, artist }) });
@@ -109,9 +108,8 @@ export function createPanel(transport: Transport): Panel {
 			if (mine !== generation) return;
 
 			if (lines.length === 0) {
-				// Genius has the song but its page yielded no readable lyrics. That is
-				// not the same as the track being absent, so the song's own metadata is
-				// kept and the header still names what was looked up.
+				// Genius has the song but its page yielded no readable lyrics, which is not
+				// the same as the track being absent.
 				setState({ state: "no-genius", track: buildTrackView({ title, artist }) });
 				return;
 			}
@@ -126,12 +124,8 @@ export function createPanel(transport: Transport): Panel {
 			const lyrics = await transport.fetchSpotifyLyrics(key).catch(() => null);
 			if (mine !== generation) return;
 
-			// fetchSpotifyLyrics returns the whole payload; applyTiming wants the
-			// timed lines on their own. Passing the wrapper instead threw
-			// "timing is not iterable" the first time Spotify had lyrics for a track.
-			//
-			// Only a synced payload carries offsets, so unsynced lyrics contribute
-			// nothing and are left out rather than matched against nothing.
+			// applyTiming wants the lines on their own, not the wrapper. Only a synced
+			// payload carries offsets.
 			const timing = lyrics?.synced ? lyrics.lines : undefined;
 
 			// Matched onto Genius' lines once, here: the view is rebuilt for every

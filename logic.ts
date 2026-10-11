@@ -98,11 +98,7 @@ export const normalize = (value: string) =>
 		.replace(/[“”]/g, "")
 		.replace(/[^a-z0-9\n]/g, "");
 
-/**
- * Strip the decorations a Spotify title carries that only hurt a comparison.
- *
- * Exported so the search-query builder strips the same way pickHit compares.
- */
+/** Strip the decorations a Spotify title carries that only hurt a comparison. */
 export const cleanTitleText = (title: string) =>
 	title
 		.replace(/\s*[-–—]\s*(remaster|remastered|version|edit|mix|live|mono|stereo).*$/i, "")
@@ -250,10 +246,8 @@ const mentionsTranslation = (value: string): boolean =>
 /**
  * Turn a refused Genius response into an error instead of an empty result.
  *
- * Genius' bot protection answers a proxied request with a 403 and a Cloudflare
- * page rather than JSON, and spicetify's wrapper turns that into a body carrying
- * only the status. Nothing in that body says the song is absent from Genius, so
- * it must not be read that way.
+ * A refusal carries only a status, which would otherwise read as "this matched
+ * nothing" — reporting a song as absent from Genius when Genius never answered.
  */
 export const throwIfGeniusRefused = (payload: unknown): void => {
 	const code = (payload as { code?: unknown } | null | undefined)?.code;
@@ -266,13 +260,7 @@ export const throwIfGeniusRefused = (payload: unknown): void => {
 };
 
 export const parseSearchResults = (payload: unknown): SongHit[] => {
-	// A failed request arrives as a bare status code with no body at all, which
-	// the parser below would otherwise read as "this query matched nothing".
-	//
-	// That is the difference between "Genius does not have this song" and "Genius
-	// never answered": Genius sits behind bot protection that refuses proxied
-	// requests outright, and reporting that as a track missing from Genius states
-	// something false as fact.
+	// A refused request has no sections, which would read as "matched nothing".
 	throwIfGeniusRefused(payload);
 
 	const sections = (payload as { response?: { sections?: Array<Record<string, unknown>> } })?.response
@@ -327,11 +315,7 @@ export const parseSearchResults = (payload: unknown): SongHit[] => {
 /**
  * Pick the search hit that is actually this track.
  *
- * Genius' relevance order is not enough: a search for a track whose title another
- * artist also uses can return a same-titled song by someone else ahead of the
- * real one, and the panel would then show that song's lyrics under this track's
- * name. Scoring on the title and the artist, and only falling back to Genius'
- * order when nothing matches, keeps a near miss from silently winning.
+ * Genius' order can put a same-titled song by another artist first.
  */
 export const pickHit = (hits: SongHit[], title: string, artist: string): SongHit | null => {
 	if (hits.length === 0) return null;
@@ -346,8 +330,7 @@ export const pickHit = (hits: SongHit[], title: string, artist: string): SongHit
 			if (hitTitle === wanted) value += 4;
 			else if (hitTitle.includes(wanted) || wanted.includes(hitTitle)) value += 2;
 		}
-		// The artist Genius lists is often several names joined, so a containment
-		// test on the normalized form is the useful one.
+		// Genius lists several names joined, so containment on the normalized form.
 		if (wantedArtist && normalize(hit.artist).includes(wantedArtist)) value += 2;
 		return value;
 	};
@@ -361,8 +344,7 @@ export const pickHit = (hits: SongHit[], title: string, artist: string): SongHit
 			bestScore = value;
 		}
 	}
-	// Nothing matched at all: Genius' own ordering is still a better guess than
-	// nothing, so the first hit stands.
+	// Nothing matched: Genius' order is still a better guess than nothing.
 	return bestScore > 0 ? best : hits[0];
 };
 
@@ -434,10 +416,7 @@ const decodeEntities = (value: string) =>
  */
 export interface LyricLine {
 	text: string;
-	/**
-	 * The line split into styled runs, when Genius marked it up. Absent on a plain
-	 * line, so `text` stays the whole answer for every caller that does not care.
-	 */
+	/** Styled runs, present only when Genius marked the line up. */
 	runs?: LyricRun[];
 	/** Referent ids anchored to this line, in document order. */
 	referentIds: string[];
@@ -497,42 +476,42 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 	// attach the same note to every repeat.
 	const opened = new Set<string>();
 
+	// Kept unstripped: the duplicate and the chrome block are both fragments of
+	// another block's header, and stripping removes the text that shows it.
 	const blocks: string[] = [];
 	for (const start of openings) {
 		const end = findContainerEnd(html, start);
 		if (end < 0) continue;
-		blocks.push(stripNonLyricMarkup(html.slice(start, end)));
+		blocks.push(html.slice(start, end));
 	}
 
-	// A song with no annotations at all is still a song on Genius: its containers
-	// carry no anchors, and taking only anchored blocks — the rule that separates
-	// the lyrics from Genius' plain-text duplicate — then reads nothing and the
-	// panel reports "no lyrics on Genius" for a page that has them.
+	// Genius renders the lyrics twice: once split across several containers, and
+	// once as a plain-text duplicate. Which is which is not a fixed question — only
+	// the first section of an annotated song carries anchors, so filtering on
+	// anchors kept that section and dropped the rest of the song.
 	//
-	// With nothing anchored there is no anchor to tell the copies apart, so the
-	// duplicate is dropped by content instead: the plain-text copy holds the whole
-	// song, while each real block holds one part of it, so a block whose text sits
-	// inside the text of all the others is the copy and goes.
-	const anchored = blocks.filter((block) => {
+	// Content settles it instead: a block whose text sits inside another block's is
+	// the copy. A tie goes to the block with anchors, which is the one worth
+	// reading.
+	const raw = blocks.map((block) => plainText(block));
+	const anchored = blocks.map((block) => {
 		const has = REFERENT_HREF.test(block);
 		REFERENT_HREF.lastIndex = 0;
 		return has;
 	});
-	const chosen =
-		anchored.length > 0
-			? anchored
-			: blocks.filter(
-					(block, index) =>
-						!blocks.some((other, otherIndex) => {
-							if (otherIndex === index) return false;
-							const text = plainText(other);
-							// Strictly longer, so two containers holding the same
-							// section cannot drop each other.
-							return text.length > plainText(block).length && text.includes(plainText(block));
-						}),
-				);
+	// A tie goes to the anchored copy.
+	const chosen = blocks.filter(
+		(_, index) =>
+			!raw.some(
+				(other, otherIndex) =>
+					otherIndex !== index &&
+					other.includes(raw[index]) &&
+					(other.length > raw[index].length || anchored[otherIndex]),
+			),
+	);
 
 	for (const block of chosen) {
+		const lyricBlock = stripNonLyricMarkup(block);
 		// Split on <br> into display lines and work out which note each belongs to.
 		// Four things make this more than a plain split:
 		//  - an anchor can wrap a break (<i>line one<br/>line two</i>), so a line
@@ -542,7 +521,7 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 		//  - a repeated chorus repeats the same id, and only the first occurrence
 		//    should open the note;
 		//  - a line can hold several anchors.
-		const pieces = block.split(/<br\s*\/?>/i);
+		const pieces = lyricBlock.split(/<br\s*\/?>/i);
 		const owners: string[][] = [];
 		// A span is the run of lines one anchor covers, and only its first line opens
 		// the note. `openIds` is the anchor currently open across a break, so a line
@@ -550,10 +529,9 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 		// whether this line is where the note opens.
 		const spanStarts: boolean[] = [];
 		let openIds: string[] = [];
-		// Emphasis still open when the previous line ended, so a tag wrapping a break
-		// keeps styling the lines inside it. The runs of each line are kept as they
-		// are read, because that carry cannot be recomputed later without replaying
-		// the tags from the start of the block.
+		// Emphasis in force when the previous line ended, so a tag wrapping a break
+		// keeps styling the lines inside it. Runs are kept as read, since the carry
+		// cannot be recomputed without replaying the block.
 		let openEmphasis = new Set<string>();
 		const runsByLine: LyricRun[][] = [];
 
@@ -614,9 +592,7 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 			}
 			// Continuations carry an id they inherited, which is what keeps the span
 			// highlighted as one block of lines rather than as separate notes.
-			// Runs are only worth carrying when something is styled. A plain line keeps
-			// its text alone, which is the common case and the shape the panel already
-			// rendered.
+			// Only carried when something is styled; a plain line keeps just its text.
 			const emphasised = runs.some((run) => run.italic || run.bold);
 			lines.push({
 				text,
@@ -629,9 +605,12 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 
 	return lines;
 };
-/** The readable text of one lyrics block, tags stripped and whitespace collapsed. */
+/** The readable text of one lyrics block, tags and emphasis asterisks stripped. */
 const plainText = (block: string): string =>
-	decodeEntities(block.replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
+	decodeEntities(block.replace(/<[^>]+>/g, ""))
+		.replace(/\*/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
 
 /** One run of a line, carrying whatever emphasis Genius put on it. */
 export interface LyricRun {
@@ -651,31 +630,26 @@ const EMPHASIS_TAGS: Record<string, "italic" | "bold"> = {
 /**
  * Split one line's markup into text runs, keeping italics and bold.
  *
- * Genius marks who sings what with emphasis rather than with a separate credit:
- * a four-part vocal has one part in italics, another in bold, and the section
- * header names each singer beside them in the same style. Stripping the tags left
- * every part looking identical, so the panel showed one flat lyric for a song
- * whose whole point is that the parts trade lines.
+ * Genius marks who sings what with emphasis rather than a separate credit, so
+ * stripping the tags made every part of a multi-singer vocal look alike.
  *
- * `open` and `close` are the emphasis still in force from the previous line,
- * because a tag can wrap a break — "<i>'Cause we had each other<br/>Fought
- * through the weather</i>" is two lines in one italic — and the run has to be
- * closed at the end of the line that ends it, exactly as the anchor ids are.
+ * `open` and `close` are the emphasis in force from the previous line, because a
+ * tag can wrap a break, and the run closes where that line ends.
  */
 const readRuns = (fragment: string, open: Set<string>): { runs: LyricRun[]; close: Set<string> } => {
 	const runs: LyricRun[] = [];
 	const active = new Set(open);
 
 	const push = (raw: string) => {
-		// Everything that is not emphasis markup is stripped before it becomes text,
-		// or the referent anchor's own <span>/<a> tags would end up read as words.
-		const text = decodeEntities(raw.replace(/<[^>]+>/g, ""));
+		// Non-emphasis tags are stripped too, or the anchor's own <span>/<a>
+		// would be read as words. Asterisks go too: Genius writes emphasis as
+		// literal *text* where the markup would not survive, and those are not
+		// part of the lyric.
+		const text = decodeEntities(raw.replace(/<[^>]+>/g, "")).replace(/\*/g, "");
 		if (!text) return;
 		const last = runs[runs.length - 1];
 		const italic = active.has("italic");
 		const bold = active.has("bold");
-		// Runs that differ only by carrying no emphasis are merged, so a line that is
-		// plain throughout stays a single run rather than a fragment per tag.
 		if (last && !!last.italic === italic && !!last.bold === bold) last.text += text;
 		else runs.push({ text, ...(italic ? { italic: true } : {}), ...(bold ? { bold: true } : {}) });
 	};
@@ -684,10 +658,7 @@ const readRuns = (fragment: string, open: Set<string>): { runs: LyricRun[]; clos
 	let match: RegExpExecArray | null;
 	EMPHASIS_PATTERN.lastIndex = 0;
 	while ((match = EMPHASIS_PATTERN.exec(fragment)) !== null) {
-		// Group 1 is the leading slash and group 2 the tag name.
 		const kind = EMPHASIS_TAGS[match[2].toLowerCase()];
-		// Anything that is not a recognised emphasis tag is markup to skip, not
-		// text: the tags come with the referent anchors, which carry ids, not words.
 		push(fragment.slice(cursor, match.index));
 		if (match[1]) active.delete(kind);
 		else active.add(kind);
@@ -701,20 +672,17 @@ const readRuns = (fragment: string, open: Set<string>): { runs: LyricRun[]; clos
 const EMPHASIS_PATTERN = /<(\/?)(i|em|b|strong)(\s[^>]*)?>/gi;
 
 /**
- * Drop the runs that carry no words, and push the whitespace hanging off either
- * end of the line inside it.
+ * Drop runs holding no words, and fold whitespace-only runs into their neighbour.
  *
- * Genius wraps its lines in markup, so a break can leave a run holding only the
- * indentation between tags — "\n\t" in the markup, nothing on screen. That run is
- * dropped, and the space that joined two runs is kept on whichever run actually
- * has text, so joining a line's runs still reproduces its text exactly.
+ * A break can leave a run holding only the indentation between tags. Joining the
+ * runs must still reproduce `text` exactly, since that is what timing and the
+ * notes read.
  */
 const trimRuns = (runs: LyricRun[]): LyricRun[] => {
 	const kept = runs.filter((run) => run.text.trim().length > 0);
 	if (kept.length === 0) return [];
 
-	// A run that is all whitespace between two text runs is the space between two
-	// words. It is appended to the run before it rather than dropped.
+	// Whitespace between two text runs is the space between two words.
 	for (let i = 1; i < runs.length; i++) {
 		const run = runs[i];
 		if (run.text.trim().length > 0 || run.text.length === 0) continue;
@@ -722,8 +690,8 @@ const trimRuns = (runs: LyricRun[]): LyricRun[] => {
 		if (previous) previous.text += run.text;
 	}
 
-	// Leading and trailing whitespace is the line's own indentation, which
-	// `text` trims away; it must not reappear when the runs are rendered.
+	// Leading and trailing whitespace is the line's own indentation, which `text`
+	// trims away.
 	kept[0].text = kept[0].text.replace(/^\s+/, "");
 	kept[kept.length - 1].text = kept[kept.length - 1].text.replace(/\s+$/, "");
 	return kept;

@@ -124,11 +124,9 @@
 	transition: background 120ms ease, color 120ms ease;
 }
 
-/* Genius marks who sings what with italics and bold. Both properties are set
-   explicitly rather than left to the browser's defaults: the client's own
-   stylesheet sets a heavy weight for elements inside a lyric line, and
-   inheriting from it made every emphasised run render at the same weight and
-   lose the distinction between the two. */
+/* Set explicitly rather than left to the browser defaults: the client sets a
+   heavy weight inside a lyric line, and inheriting made every emphasised run
+   render at the same weight. */
 .gl-emph {
 	font-style: normal;
 	font-weight: inherit;

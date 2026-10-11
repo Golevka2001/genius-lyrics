@@ -200,15 +200,11 @@ const Line = ({
 				onMouseEnter: view.annotated ? () => onHover(view.referentIds) : undefined,
 				onMouseLeave: view.annotated ? () => onHover(null) : undefined,
 				title: view.annotated ? "Show annotation" : undefined,
-				// Genius marks which part sings what with italics and bold rather than
-				// with a separate credit, so a four-part vocal rendered as flat text
-				// reads as one voice throughout. The runs carry that through; a line
-				// with none is rendered as before.
+				// Genius marks each vocal part with italics or bold; a line without
+				// them renders as before.
 				children: view.runs
 					? view.runs.map((run, index) => {
-								// The class names are written out in full rather than assembled
-								// from parts, so the test that checks the markup against index.scss
-								// can see every one of them.
+								// Spelled out so the class-name test can see them.
 								const classes = [
 									"gl-emph",
 									...(run.italic ? ["gl-emph-italic"] : []),
@@ -335,10 +331,8 @@ const Panel = () => {
 			h("div", { className: "gl-artist", children: track.artist }),
 			h("div", {
 				className: "gl-count",
-				// How many notes there are, not how many lines they cover: one annotation
-				// anchored across a phrase spans several lines, and counting those
-				// lines reported seven notes on a song that has one. The note count
-				// climbs as the batches land, which is what the viewer is waiting for.
+				// Notes, not the lines they span: one annotation across a
+				// phrase reported seven on a song that has one.
 				children: `${track.annotationCount} ${track.annotationCount === 1 ? "annotation" : "annotations"}`,
 			}),
 		),

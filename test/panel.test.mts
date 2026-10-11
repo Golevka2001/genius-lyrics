@@ -58,9 +58,7 @@ function harness(overrides: Partial<Transport> = {}) {
 		},
 		fetchSpotifyLyrics: async () => {
 			calls.push("timing");
-			// A synced payload, the shape a track that actually has color-lyrics
-			// returns. The default used to be null, which hid the panel passing this
-			// wrapper to applyTiming where a list of lines is expected.
+			// A null default here hid the wrapper being passed where a list is expected.
 			return {
 				synced: true,
 				lines: [
@@ -209,9 +207,7 @@ test("a transport failure is reported with its reason", async () => {
 });
 
 test("Spotify's synced lyrics become the timing axis", async () => {
-	// fetchSpotifyLyrics answers with a wrapper ({synced, lines}), and handing that
-	// wrapper to applyTiming threw "timing is not iterable" on every track that has
-	// color-lyrics. The offsets must land on the matching lines instead.
+	// The payload is a wrapper; applyTiming wants the lines.
 	const h = harness();
 	const panel = createPanel(h.transport);
 

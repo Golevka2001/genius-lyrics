@@ -195,8 +195,7 @@ test("parseLyricLines decodes entities and collapses whitespace", () => {
 	);
 });
 test("parseLyricLines reads a song that has no annotations at all", () => {
-	// A song with zero annotations still has lyrics on Genius. Reading only
-	// anchored containers reported "no lyrics" for those pages.
+	// A song with no annotations still has lyrics.
 	const html = `<div data-lyrics-container="true">Just plain lyrics<br>with no anchors<br>x<br>y</div>`;
 	assert.deepEqual(
 		parseLyricLines(html).map((line) => line.text),
@@ -213,11 +212,9 @@ test("parseLyricLines drops the plain-text duplicate when nothing is annotated",
 });
 
 test("parseSearchResults throws when Genius refused the request", () => {
-	// Cloudflare answers a proxied request with a status and no body. Reading that
-	// as "no results" told users a song was missing from Genius when it is not.
+	// A refusal carries only a status, which must not read as "no results".
 	assert.throws(() => parseSearchResults({ code: 403, error: "Forbidden" }), /403/);
 	assert.throws(() => parseSearchResults({ code: 429 }), /rate limit/i);
-	// A body that simply matched nothing is still an empty result, not a failure.
 	assert.deepEqual(parseSearchResults({ response: { sections: [] } }), []);
 });
 
@@ -279,10 +276,7 @@ test("parseSpotifyLyrics handles unsynced lyrics and absent payloads", () => {
 });
 
 test("parseSearchResults throws on a rate-limited body and stays quiet on an empty one", () => {
-	// Genius answers 429 with no sections. Reporting that as "no results" told the
-	// panel a song was missing from Genius when the request never succeeded. The
-	// transport already turned 429 into an error; the parser now does the same for
-	// every refused response, so a caller's own try/catch sees one failure kind.
+	// Every refusal throws, so a caller sees one failure kind.
 	assert.throws(() => parseSearchResults({ code: 429 }), /rate limit/i);
 	assert.deepEqual(parseSearchResults({}), []);
 	assert.deepEqual(parseSearchResults(null), []);
@@ -294,9 +288,21 @@ test("parseReferent ignores a rate-limited body", () => {
 	assert.equal(annotation.source, "none");
 });
 
+test("parseLyricLines keeps sections that carry no anchors", () => {
+	// Only the first section of a song has annotations, so filtering on anchors
+	// kept that section and dropped everything after it — the panel showed a third
+	// of the song and reported no error.
+	const html = `<div data-lyrics-container="true">[Intro]<br/>opening line<br/>
+		<a href="/123/x/second-line">second line</a></div>
+		<div data-lyrics-container="true">[Chorus]<br/>no anchors here<br/>but still lyrics</div>`;
+	assert.deepEqual(
+		parseLyricLines(html).map((line) => line.text),
+		["[Intro]", "opening line", "second line", "[Chorus]", "no anchors here", "but still lyrics"],
+	);
+});
+
 test("parseLyricLines keeps the italics and bold that mark who sings what", () => {
-	// Genius credits each vocal part by styling it, so a stripped tag makes every
-	// part read as the same voice. This is the shape taken from XG's IN THE RAIN.
+	// Shape taken from XG's IN THE RAIN.
 	const html = `<div data-lyrics-container="true">[Verse 1: Juria, <i>Chisa</i>]<br/>
 		Rain on my shoulder<br/>
 		<i>'Cause we had each other<br/>Fought through the weather</i><br/>
@@ -309,14 +315,12 @@ test("parseLyricLines keeps the italics and bold that mark who sings what", () =
 		{ text: "Chisa", italic: true },
 		{ text: "]" },
 	]);
-	// The italic opens on one line and closes two lines later: both lines keep it.
+	// The italic closes two lines later: both lines keep it.
 	assert.deepEqual(styled.runs, [{ text: "I'm washing it all away", bold: true }]);
 });
 
 test("a line's runs join back to exactly its text", () => {
-	// The timing matcher and the notes both read `text`, so the runs are only a
-	// rendering detail: if they disagreed with it, the same line would highlight as
-	// one thing and read as another.
+	// `text` is what timing and notes read, so the runs must not disagree with it.
 	const html = `<div data-lyrics-container="true">[Verse 1: Juria, <i>Chisa</i>]<br/>
 		<a href="/123/something/Gone"><span>Go</span></a>ne, <b>gone</b><br/>
 		<i>Run on<br/>further</i></div>`;
