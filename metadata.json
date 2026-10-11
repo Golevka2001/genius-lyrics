@@ -1,6 +1,6 @@
 {
 	"name": "genius-lyrics",
-	"kind": "extension",
+	"kind": "app",
 	"version": "0.1.0",
 	"authors": [
 		"Golevka2001"

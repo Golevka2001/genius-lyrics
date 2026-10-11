@@ -53,9 +53,6 @@ const PANEL_WIDTH = 380;
 /** Node of the highlighted line, kept so it can be scrolled into view. */
 let activeRef: { current: HTMLElement | null } | { current: null } = { current: null };
 
-/** Set by the surface so the playbar button can toggle it from outside React. */
-let toggleRef: { current: (() => void) | null } = { current: null };
-
 const notify = () => {
 	for (const listener of listeners) listener();
 };
