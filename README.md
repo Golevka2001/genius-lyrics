@@ -85,6 +85,13 @@ A request that never answers is abandoned after eight seconds instead of holding
 the panel on "loading" forever, so a stalled proxy surfaces as an explained
 failure the user can retry rather than an endless spinner.
 
+Entries expire after ten minutes, which is the window `lyrics-plus` keeps its
+data for: a song heard again inside it costs nothing, and one heard after it is
+fetched fresh. Expiring by time rather than by entry count is what keeps the
+caches from growing for as long as the client stays open — there is no timer
+behind it, the expired entries are dropped the next time the cache is asked for
+anything.
+
 ## Rendering ahead of the notes
 
 Step 4 is the slow one: a popular song carries 50+ referents, and waiting for all

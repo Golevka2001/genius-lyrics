@@ -23,6 +23,17 @@ import { parseLyricLines } from "./logic.ts";
 
 const ORIGIN = "https://genius.com";
 
+/**
+ * How long a fetched result is reused, and how long it is kept at all.
+ *
+ * Ten minutes is the window lyrics-plus keeps its data for: a song heard again
+ * inside it costs nothing, and one heard after it is fetched fresh. Sizing by
+ * time rather than by entry count is what stops the caches growing for as long
+ * as the client stays open.
+ */
+const RESULT_TTL = 10 * 60 * 1000; // ms
+const CACHE = { ttl: RESULT_TTL };
+
 /** Song titles carry decorations that only hurt search. */
 const cleanTitle = (title: string) =>
 	title
@@ -64,7 +75,7 @@ const searchPage = createCache(async (query: string): Promise<SongHit[]> => {
 	if (body?.code === 429) throw new Error("Genius rate limit reached (429). Try again in a moment.");
 
 	return parseSearchResults(body);
-});
+}, CACHE);
 
 /**
  * Find the Genius song for a track.
@@ -88,7 +99,7 @@ export const searchSong = async (title: string, artist: string): Promise<SongHit
 const songCache = createCache(async (id: number): Promise<GeniusSong | null> => {
 	const body = (await client.cosmos.get(`${ORIGIN}/api/songs/${id}`)) as { response?: unknown };
 	return parseSong(body);
-});
+}, CACHE);
 
 /** Fetch song metadata: title, url and the community annotation count. */
 export const fetchSong = (id: number): Promise<GeniusSong | null> => songCache.get(id);
@@ -110,6 +121,7 @@ export const fetchLyricsPage = async (songUrl: string): Promise<string> => {
 
 const lyricsCache = createCache(async (songUrl: string): Promise<LyricLine[]> =>
 	parseLyricLines(await fetchLyricsPage(songUrl)),
+	CACHE,
 );
 
 /**
@@ -161,7 +173,7 @@ const fetchAnnotationUncached = async (referentId: string): Promise<Annotation> 
 };
 
 /** Referents are immutable per song, so one lookup per id is enough. */
-const annotationCache = createCache(fetchAnnotationUncached);
+const annotationCache = createCache(fetchAnnotationUncached, CACHE);
 
 /** What one batch of the referents resolved. */
 export interface AnnotationBatch {
@@ -247,7 +259,7 @@ const spotifyLyricsCache = createCache(async (trackId: string): Promise<SpotifyL
 	if (!body || typeof body !== "object" || body.code) return null;
 	const { parseSpotifyLyrics } = await import("./logic.js");
 	return parseSpotifyLyrics(body);
-});
+}, CACHE);
 
 /**
  * Spotify's own lyrics, used purely for the timing axis.
