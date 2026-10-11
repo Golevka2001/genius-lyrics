@@ -391,6 +391,26 @@ test("a note opens once but stays attached across the lines it spans", () => {
 	assert.ok(continuations.length > 0, "expected at least one note to cover several lines");
 });
 
+test("an anchor that closes on its own line does not carry onto the next", () => {
+	// Counting opens against closes cannot tell this anchor from one wrapping a
+	// break: both balance, and treating that as "still open" ran the note over every
+	// line after it. Shape taken from XG's WINTER WITHOUT YOU.
+	const html = `<div data-lyrics-container="true">
+		<a href="/111/x/on-the-dl"><span>On the DL I still miss you though</span></a><br/>
+		Looking cute at every party<br/>
+		Posting on my story<br/>
+		<a href="/222/x/joyful"><i>Joyful, joyful<br/>Everybody come and raise your voice</i></a>
+	</div>`;
+	const lines = parseLyricLines(html).filter((line) => !line.blank);
+
+	assert.deepEqual(lines[0].referentIds, ["111"], "the anchor's own line");
+	assert.deepEqual(lines[1].referentIds, [], "a closed anchor must not reach the next line");
+	assert.deepEqual(lines[2].referentIds, []);
+	// One that really does wrap a break still covers both of its lines.
+	assert.deepEqual(lines[3].referentIds, ["222"]);
+	assert.deepEqual(lines[4].referentIds, ["222"]);
+});
+
 test("a repeated chorus opens its note again at each repeat", () => {
 	// Genius renders the chorus in every one of its containers and anchors the
 	// same referent id each time. Each repeat is a separate region the listener

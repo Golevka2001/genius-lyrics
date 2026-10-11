@@ -525,6 +525,10 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 		// inside a spanning anchor inherits its id; `spanStarts` records separately
 		// whether this line is where the note opens.
 		const spanStarts: boolean[] = [];
+		// Referent ids whose <a> is still open, so an anchor wrapping a break keeps
+		// the lines inside it. A count of opens against closes cannot decide this:
+		// an anchor that opens and closes on one line balances to zero and would
+		// leak its id onto every line after it.
 		let openIds: string[] = [];
 		// Emphasis in force when the previous line ended, so a tag wrapping a break
 		// keeps styling the lines inside it. Runs are kept as read, since the carry
@@ -543,16 +547,17 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 			// opened above a break only means this line is inside it, and that line
 			// must not open anything.
 			const ids = collectReferentIds(raw);
-			const opens = raw.match(OPENING_ANCHOR)?.length ?? 0;
-			const closes = raw.match(CLOSING_ANCHOR)?.length ?? 0;
 			spanStarts.push(ids.length > 0);
+			// Every anchor open anywhere in this line, whether opened here or above a
+			// break: the text belongs to all of them.
+			owners.push([...new Set([...openIds, ...ids])]);
 
-			if (ids.length > 0) openIds = ids;
-			owners.push([...openIds]);
-
-			// Balance <a> tags across the break: text before a close still belongs
-			// to the anchor opened above it.
-			if (closes > opens) openIds = [];
+			// What is still open at the end of the line decides the next one. The
+			// anchors are walked in document order rather than counted, because the
+			// count cannot tell an anchor that closed on its own line — the common
+			// case — from one wrapping the break, and getting that wrong carried a
+			// note across the rest of the song.
+			openIds = stillOpen(raw, openIds);
 		}
 
 		for (const [index, raw] of pieces.entries()) {
@@ -705,12 +710,31 @@ const collectReferentIds = (fragment: string): string[] => {
 	return ids;
 };
 
+/** Both ends of a referent anchor, in one pass so they stay in document order. */
+const ANCHOR_EDGE = /<a\b[^>]*href="\/(\d{3,})\/[^"]*"|<\/a>/g;
+
 /**
- * String#match resets lastIndex itself, so these can be shared instead of being
- * rebuilt for every line of every song.
+ * Which referent anchors are still open after this line.
+ *
+ * An anchor that opens and closes on the same line owns only that line; one that
+ * wraps a <br/> keeps the lines inside it. Counting opens against closes gets the
+ * first case wrong — it balances to zero, so the id was never dropped and the
+ * note carried on to every following line — so the tags are walked instead.
  */
-const OPENING_ANCHOR = /<a\b/g;
-const CLOSING_ANCHOR = /<\/a>/g;
+const stillOpen = (fragment: string, carried: string[]): string[] => {
+	const stack = [...carried];
+	ANCHOR_EDGE.lastIndex = 0;
+	let match: RegExpExecArray | null;
+	while ((match = ANCHOR_EDGE.exec(fragment)) !== null) {
+		if (match[1]) stack.push(match[1]);
+		else stack.pop();
+	}
+	ANCHOR_EDGE.lastIndex = 0;
+	// An id opened and closed on this line can survive as a stray entry only if the
+	// markup nests unexpectedly; keeping the carried ones that are still open is
+	// what the next line needs.
+	return stack.filter((id, index) => stack.indexOf(id) === index);
+};
 
 /**
  * Cut every data-exclude-from-selection region out of a lyrics block.
