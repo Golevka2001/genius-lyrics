@@ -18,7 +18,7 @@
 
 import { client, warn } from "/modules/stdlib/mod.ts";
 import { createCache } from "./cache.ts";
-import { parseReferent, parseSearchResults, parseSong, type Annotation, type GeniusSong, type LyricLine, type SongHit, type SpotifyLyrics } from "./logic.ts";
+import { cleanTitleText, parseReferent, parseSearchResults, parseSong, throwIfGeniusRefused, type Annotation, type GeniusSong, type LyricLine, type SongHit, type SpotifyLyrics } from "./logic.ts";
 import { parseLyricLines } from "./logic.ts";
 
 const ORIGIN = "https://genius.com";
@@ -35,12 +35,7 @@ const RESULT_TTL = 10 * 60 * 1000; // ms
 const CACHE = { ttl: RESULT_TTL };
 
 /** Song titles carry decorations that only hurt search. */
-const cleanTitle = (title: string) =>
-	title
-		.replace(/\s*[-–—]\s*(remaster|remastered|version|edit|mix|live|mono|stereo).*$/i, "")
-		.replace(/\s*\(.*?\)\s*$/g, "")
-		.replace(/\s*\[.*?\]\s*$/g, "")
-		.trim();
+const cleanTitle = cleanTitleText;
 
 /**
  * Build search queries from a title/artist pair.
@@ -70,10 +65,6 @@ const searchPage = createCache(async (query: string): Promise<SongHit[]> => {
 	const url = `${ORIGIN}/api/search/song?${new URLSearchParams({ per_page: perPage, q: query })}`;
 	const body = (await client.cosmos.get(url)) as { response?: unknown; code?: number };
 
-	// A 429 arrives with no sections at all, which would otherwise read as
-	// "this track is not on Genius" and silently fall through the queries.
-	if (body?.code === 429) throw new Error("Genius rate limit reached (429). Try again in a moment.");
-
 	return parseSearchResults(body);
 }, CACHE);
 
@@ -97,7 +88,10 @@ export const searchSong = async (title: string, artist: string): Promise<SongHit
 
 /** A song's metadata is immutable, so one fetch per id serves the session. */
 const songCache = createCache(async (id: number): Promise<GeniusSong | null> => {
-	const body = (await client.cosmos.get(`${ORIGIN}/api/songs/${id}`)) as { response?: unknown };
+	const body = (await client.cosmos.get(`${ORIGIN}/api/songs/${id}`)) as { response?: unknown; code?: number };
+	// The same reason as in the search: a refusal here would otherwise read as a
+	// song with no metadata, which the panel takes as "no annotations at all".
+	throwIfGeniusRefused(body);
 	return parseSong(body);
 }, CACHE);
 
@@ -293,7 +287,14 @@ export const detectFailure = (error: unknown): string => {
 	if (/Invalid target/i.test(text)) {
 		return "The spicetify daemon is not running, and spicetify's hosted proxy will not carry genius.com. Start the daemon, or point the CORS proxy at your own service.";
 	}
-	if (/403|Forbidden/i.test(text)) return "Genius refused the request (anti-bot). Point the CORS proxy at your own service.";
+	// A 403 here is Genius' bot protection answering, not the proxy failing: the
+	// daemon forwards the request and Cloudflare refuses it from the exit IP. The
+	// spicetify daemon is necessary but not sufficient, so the message says the
+	// proxy must carry a browser-like request rather than implying the daemon is
+	// broken.
+	if (/403|Forbidden|refused/i.test(text)) {
+		return "Genius refused the request (403, anti-bot protection). The proxy's exit address is being blocked by Cloudflare; point the CORS proxy at a service that requests genius.com with browser-like headers.";
+	}
 	if (/Failed to fetch|NetworkError|load failed/i.test(text)) {
 		return "Could not reach Genius. This needs a CORS proxy: run the spicetify daemon, or configure your own.";
 	}

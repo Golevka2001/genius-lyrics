@@ -8,7 +8,7 @@
  * and *what* survives a track change.
  */
 
-import type { Annotation, GeniusSong, LyricLine, SongHit, SpotifyLyrics } from "./logic.ts";
+import { pickHit, type Annotation, type GeniusSong, type LyricLine, type SongHit, type SpotifyLyrics } from "./logic.ts";
 import { applyTiming, buildTrackView, type PanelState } from "./view.ts";
 import type { AnnotationBatch } from "./genius.ts";
 
@@ -97,16 +97,22 @@ export function createPanel(transport: Transport): Panel {
 			const hits = await transport.searchSong(title, artist);
 			if (mine !== generation) return;
 
-			if (hits.length === 0) {
+			// Genius' relevance order can put a same-titled song by another artist
+			// first, so the hit is chosen by title/artist match rather than position.
+			const hit = pickHit(hits, title, artist);
+			if (!hit) {
 				setState({ state: "no-genius", track: buildTrackView({ title, artist }) });
 				return;
 			}
 
-			const [song, lines] = await Promise.all([transport.fetchSong(hits[0].id), transport.fetchLyrics(hits[0].url)]);
+			const [song, lines] = await Promise.all([transport.fetchSong(hit.id), transport.fetchLyrics(hit.url)]);
 			if (mine !== generation) return;
 
 			if (lines.length === 0) {
-				setState({ state: "no-genius", track: null });
+				// Genius has the song but its page yielded no readable lyrics. That is
+				// not the same as the track being absent, so the song's own metadata is
+				// kept and the header still names what was looked up.
+				setState({ state: "no-genius", track: buildTrackView({ title, artist }) });
 				return;
 			}
 
@@ -117,13 +123,21 @@ export function createPanel(transport: Transport): Panel {
 			// Spotify lyrics still gets its notes. The axis is one request and decides
 			// whether the lines can follow playback, so it is worth waiting for; the
 			// notes are many and are not.
-			const timing = await transport.fetchSpotifyLyrics(key).catch(() => null);
+			const lyrics = await transport.fetchSpotifyLyrics(key).catch(() => null);
 			if (mine !== generation) return;
+
+			// fetchSpotifyLyrics returns the whole payload; applyTiming wants the
+			// timed lines on their own. Passing the wrapper instead threw
+			// "timing is not iterable" the first time Spotify had lyrics for a track.
+			//
+			// Only a synced payload carries offsets, so unsynced lyrics contribute
+			// nothing and are left out rather than matched against nothing.
+			const timing = lyrics?.synced ? lyrics.lines : undefined;
 
 			// Matched onto Genius' lines once, here: the view is rebuilt for every
 			// batch of notes that lands, and this walks both sides of the match each
 			// time for a result that cannot change.
-			const timed = applyTiming(lines, timing ?? undefined);
+			const timed = applyTiming(lines, timing);
 
 			// The lyrics and every anchor are known at this point, which is enough to
 			// read the song. Holding the panel on "loading" until all fifty notes had

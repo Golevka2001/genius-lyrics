@@ -98,6 +98,17 @@ export const normalize = (value: string) =>
 		.replace(/[“”]/g, "")
 		.replace(/[^a-z0-9\n]/g, "");
 
+/**
+ * Strip the decorations a Spotify title carries that only hurt a comparison.
+ *
+ * Exported so the search-query builder strips the same way pickHit compares.
+ */
+export const cleanTitleText = (title: string) =>
+	title
+		.replace(/\s*[-–—]\s*(remaster|remastered|version|edit|mix|live|mono|stereo).*$/i, "")
+		.replace(/\s*[\(\[].*?[\)\]]\s*$/g, "")
+		.trim();
+
 export interface Annotation {
 	/** Referent id, taken from the first numeric path segment. */
 	referentId: string;
@@ -236,7 +247,34 @@ const mentionsTranslation = (value: string): boolean =>
  * unannotated originals ahead of translations, and only uses Genius' own order
  * to break ties.
  */
+/**
+ * Turn a refused Genius response into an error instead of an empty result.
+ *
+ * Genius' bot protection answers a proxied request with a 403 and a Cloudflare
+ * page rather than JSON, and spicetify's wrapper turns that into a body carrying
+ * only the status. Nothing in that body says the song is absent from Genius, so
+ * it must not be read that way.
+ */
+export const throwIfGeniusRefused = (payload: unknown): void => {
+	const code = (payload as { code?: unknown } | null | undefined)?.code;
+	if (typeof code !== "number" || code < 400) return;
+	throw new Error(
+		code === 429
+			? "Genius rate limit reached (429). Try again in a moment."
+			: `Genius refused the request (${code}).`,
+	);
+};
+
 export const parseSearchResults = (payload: unknown): SongHit[] => {
+	// A failed request arrives as a bare status code with no body at all, which
+	// the parser below would otherwise read as "this query matched nothing".
+	//
+	// That is the difference between "Genius does not have this song" and "Genius
+	// never answered": Genius sits behind bot protection that refuses proxied
+	// requests outright, and reporting that as a track missing from Genius states
+	// something false as fact.
+	throwIfGeniusRefused(payload);
+
 	const sections = (payload as { response?: { sections?: Array<Record<string, unknown>> } })?.response
 		?.sections;
 	if (!Array.isArray(sections)) return [];
@@ -284,6 +322,48 @@ export const parseSearchResults = (payload: unknown): SongHit[] => {
 		.map((hit, index) => ({ hit, index }))
 		.sort((a, b) => rank(a.hit) - rank(b.hit) || a.index - b.index)
 		.map((entry) => entry.hit);
+};
+
+/**
+ * Pick the search hit that is actually this track.
+ *
+ * Genius' relevance order is not enough: a search for a track whose title another
+ * artist also uses can return a same-titled song by someone else ahead of the
+ * real one, and the panel would then show that song's lyrics under this track's
+ * name. Scoring on the title and the artist, and only falling back to Genius'
+ * order when nothing matches, keeps a near miss from silently winning.
+ */
+export const pickHit = (hits: SongHit[], title: string, artist: string): SongHit | null => {
+	if (hits.length === 0) return null;
+
+	const wanted = normalize(cleanTitleText(title));
+	const wantedArtist = normalize(artist);
+
+	const score = (hit: SongHit) => {
+		let value = 0;
+		const hitTitle = normalize(cleanTitleText(hit.title));
+		if (wanted && hitTitle) {
+			if (hitTitle === wanted) value += 4;
+			else if (hitTitle.includes(wanted) || wanted.includes(hitTitle)) value += 2;
+		}
+		// The artist Genius lists is often several names joined, so a containment
+		// test on the normalized form is the useful one.
+		if (wantedArtist && normalize(hit.artist).includes(wantedArtist)) value += 2;
+		return value;
+	};
+
+	let best = hits[0];
+	let bestScore = score(best);
+	for (const hit of hits.slice(1)) {
+		const value = score(hit);
+		if (value > bestScore) {
+			best = hit;
+			bestScore = value;
+		}
+	}
+	// Nothing matched at all: Genius' own ordering is still a better guess than
+	// nothing, so the first hit stands.
+	return bestScore > 0 ? best : hits[0];
 };
 
 export interface GeniusSong {
@@ -412,13 +492,42 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 	// attach the same note to every repeat.
 	const opened = new Set<string>();
 
+	const blocks: string[] = [];
 	for (const start of openings) {
 		const end = findContainerEnd(html, start);
 		if (end < 0) continue;
-		const block = stripNonLyricMarkup(html.slice(start, end));
-		if (!REFERENT_HREF.test(block)) continue;
-		REFERENT_HREF.lastIndex = 0;
+		blocks.push(stripNonLyricMarkup(html.slice(start, end)));
+	}
 
+	// A song with no annotations at all is still a song on Genius: its containers
+	// carry no anchors, and taking only anchored blocks — the rule that separates
+	// the lyrics from Genius' plain-text duplicate — then reads nothing and the
+	// panel reports "no lyrics on Genius" for a page that has them.
+	//
+	// With nothing anchored there is no anchor to tell the copies apart, so the
+	// duplicate is dropped by content instead: the plain-text copy holds the whole
+	// song, while each real block holds one part of it, so a block whose text sits
+	// inside the text of all the others is the copy and goes.
+	const anchored = blocks.filter((block) => {
+		const has = REFERENT_HREF.test(block);
+		REFERENT_HREF.lastIndex = 0;
+		return has;
+	});
+	const chosen =
+		anchored.length > 0
+			? anchored
+			: blocks.filter(
+					(block, index) =>
+						!blocks.some((other, otherIndex) => {
+							if (otherIndex === index) return false;
+							const text = plainText(other);
+							// Strictly longer, so two containers holding the same
+							// section cannot drop each other.
+							return text.length > plainText(block).length && text.includes(plainText(block));
+						}),
+				);
+
+	for (const block of chosen) {
 		// Split on <br> into display lines and work out which note each belongs to.
 		// Four things make this more than a plain split:
 		//  - an anchor can wrap a break (<i>line one<br/>line two</i>), so a line
@@ -458,7 +567,7 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 		}
 
 		for (const [index, raw] of pieces.entries()) {
-			const text = decodeEntities(raw.replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
+			const text = plainText(raw);
 			// A section header is Genius' own scaffolding, not a lyric, and carries no
 			// annotation of its own. The id seen here belongs to the anchor that opens
 			// after the break, so letting it through would put a note on the header.
@@ -500,6 +609,10 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 
 	return lines;
 };
+/** The readable text of one lyrics block, tags stripped and whitespace collapsed. */
+const plainText = (block: string): string =>
+	decodeEntities(block.replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
+
 const collectReferentIds = (fragment: string): string[] => {
 	const ids: string[] = [];
 	REFERENT_HREF.lastIndex = 0;

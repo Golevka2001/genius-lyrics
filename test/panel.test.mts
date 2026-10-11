@@ -58,7 +58,16 @@ function harness(overrides: Partial<Transport> = {}) {
 		},
 		fetchSpotifyLyrics: async () => {
 			calls.push("timing");
-			return null;
+			// A synced payload, the shape a track that actually has color-lyrics
+			// returns. The default used to be null, which hid the panel passing this
+			// wrapper to applyTiming where a list of lines is expected.
+			return {
+				synced: true,
+				lines: [
+					{ text: "a line", startTimeMs: 1000 },
+					{ text: "another", startTimeMs: 4000 },
+				],
+			};
 		},
 		fetchAnnotations: async (ids, { signal, onBatch } = {}) => {
 			calls.push(`notes:${ids.join(",")}`);
@@ -197,6 +206,60 @@ test("a transport failure is reported with its reason", async () => {
 
 	assert.equal(panel.state.state, "failed");
 	assert.match(String(panel.state.error), /rate limit/);
+});
+
+test("Spotify's synced lyrics become the timing axis", async () => {
+	// fetchSpotifyLyrics answers with a wrapper ({synced, lines}), and handing that
+	// wrapper to applyTiming threw "timing is not iterable" on every track that has
+	// color-lyrics. The offsets must land on the matching lines instead.
+	const h = harness();
+	const panel = createPanel(h.transport);
+
+	await panel.load(track("one"));
+
+	const starts = panel.state.track?.lines.map((line) => line.startTimeMs);
+	assert.deepEqual(starts, [1000, 4000]);
+});
+
+test("unsynced Spotify lyrics leave the lines untimed", async () => {
+	const h = harness({
+		fetchSpotifyLyrics: async () => ({ synced: false, lines: [{ text: "a line", startTimeMs: 1000 }] }),
+	});
+	const panel = createPanel(h.transport);
+
+	await panel.load(track("one"));
+
+	assert.equal(panel.state.state, "ready");
+	assert.deepEqual(
+		panel.state.track?.lines.map((line) => line.startTimeMs),
+		[undefined, undefined],
+	);
+});
+
+test("the chosen hit is the one matching title and artist, not the first", async () => {
+	const other = { ...hit, id: 2, title: "Creep", artist: "Radiohead (Cover Band)" };
+	const h = harness({
+		searchSong: async () => [other, hit],
+	});
+	const panel = createPanel(h.transport);
+
+	await panel.load(track("Creep"));
+
+	assert.ok(h.calls.includes("song"), "the song should have been fetched");
+	assert.ok(
+		h.calls.some((call) => call === "lyrics:https://genius.com/x"),
+		`expected the matching hit's page, got ${JSON.stringify(h.calls)}`,
+	);
+});
+
+test("a page with no readable lyrics keeps the track's name for the message", async () => {
+	const h = harness({ fetchLyrics: async () => [] });
+	const panel = createPanel(h.transport);
+
+	await panel.load(track("Creep"));
+
+	assert.equal(panel.state.state, "no-genius");
+	assert.equal(panel.state.track?.title, "Creep");
 });
 
 test("toggle opens one line and closes it again", async () => {

@@ -7,6 +7,7 @@ import {
 	parseLyricLines,
 	parseReferent,
 	parseSearchResults,
+	pickHit,
 	parseSong,
 	parseSpotifyLyrics,
 } from "../logic.ts";
@@ -193,11 +194,54 @@ test("parseLyricLines decodes entities and collapses whitespace", () => {
 		["One two three four", "'Cause it feels so empty & cold", "Five six seven eight"],
 	);
 });
-test("parseLyricLines requires anchors, so an unannotated page yields nothing", () => {
-	// Annotations are the whole point of this parser: with no anchors there is
-	// nothing to attach.
+test("parseLyricLines reads a song that has no annotations at all", () => {
+	// A song with zero annotations still has lyrics on Genius. Reading only
+	// anchored containers reported "no lyrics" for those pages.
 	const html = `<div data-lyrics-container="true">Just plain lyrics<br>with no anchors<br>x<br>y</div>`;
-	assert.deepEqual(parseLyricLines(html), []);
+	assert.deepEqual(
+		parseLyricLines(html).map((line) => line.text),
+		["Just plain lyrics", "with no anchors", "x", "y"],
+	);
+});
+
+test("parseLyricLines drops the plain-text duplicate when nothing is annotated", () => {
+	const html = `<div data-lyrics-container="true">Verse one line<br>Verse two line</div>
+		<div data-lyrics-container="true">Verse one line<br>Verse two line<br>Chorus line</div>`;
+	const texts = parseLyricLines(html).map((line) => line.text);
+	assert.equal(texts.filter((text) => text === "Verse one line").length, 1);
+	assert.ok(texts.includes("Chorus line"));
+});
+
+test("parseSearchResults throws when Genius refused the request", () => {
+	// Cloudflare answers a proxied request with a status and no body. Reading that
+	// as "no results" told users a song was missing from Genius when it is not.
+	assert.throws(() => parseSearchResults({ code: 403, error: "Forbidden" }), /403/);
+	assert.throws(() => parseSearchResults({ code: 429 }), /rate limit/i);
+	// A body that simply matched nothing is still an empty result, not a failure.
+	assert.deepEqual(parseSearchResults({ response: { sections: [] } }), []);
+});
+
+test("pickHit prefers the hit whose title and artist match the track", () => {
+	const hits = [
+		{ id: 1, title: "IN THE RAIN", url: "u1", artist: "Xscape", annotationCount: 40, translation: false },
+		{ id: 2, title: "IN THE RAIN", url: "u2", artist: "XG", annotationCount: 0, translation: false },
+	];
+	assert.equal(pickHit(hits, "IN THE RAIN", "XG")?.id, 2);
+	assert.equal(pickHit(hits, "IN THE RAIN", "Xscape")?.id, 1);
+});
+
+test("pickHit ignores a trailing decoration on either title", () => {
+	const hits = [{ id: 7, title: "In The Rain (Remastered)", url: "u", artist: "XG", annotationCount: 0, translation: false }];
+	assert.equal(pickHit(hits, "IN THE RAIN", "XG")?.id, 7);
+});
+
+test("pickHit falls back to Genius' order when nothing matches", () => {
+	const hits = [
+		{ id: 3, title: "Totally Different", url: "u3", artist: "Someone", annotationCount: 9, translation: false },
+		{ id: 4, title: "Also Different", url: "u4", artist: "Nobody", annotationCount: 1, translation: false },
+	];
+	assert.equal(pickHit(hits, "IN THE RAIN", "XG")?.id, 3);
+	assert.equal(pickHit([], "IN THE RAIN", "XG"), null);
 });
 
 test("parseLyricLines is linear in page size, not quadratic", () => {
@@ -234,10 +278,12 @@ test("parseSpotifyLyrics handles unsynced lyrics and absent payloads", () => {
 	assert.equal(parseSpotifyLyrics(null), null);
 });
 
-test("parseSearchResults treats a rate-limited body as no hits, not a crash", () => {
-	// Genius answers 429 with no sections; this must degrade quietly so callers
-	// can tell "not on Genius" apart from "try again".
-	assert.deepEqual(parseSearchResults({ code: 429 }), []);
+test("parseSearchResults throws on a rate-limited body and stays quiet on an empty one", () => {
+	// Genius answers 429 with no sections. Reporting that as "no results" told the
+	// panel a song was missing from Genius when the request never succeeded. The
+	// transport already turned 429 into an error; the parser now does the same for
+	// every refused response, so a caller's own try/catch sees one failure kind.
+	assert.throws(() => parseSearchResults({ code: 429 }), /rate limit/i);
 	assert.deepEqual(parseSearchResults({}), []);
 	assert.deepEqual(parseSearchResults(null), []);
 });
