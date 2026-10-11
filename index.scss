@@ -57,7 +57,6 @@
 	margin-top: 6px;
 }
 
-.gl-empty,
 .gl-hint {
 	font-size: 0.82em;
 	opacity: 0.6;
@@ -349,6 +348,32 @@
 
 .gl-status-error .gl-hint {
 	color: var(--text-base, #fff);
+}
+
+/* A plain button rather than one of the client's: this sits inside a flex column
+   of plain text, and the client's buttons bring their own sizing and padding that
+   would not match the surrounding lines. Colours are read from the text so it
+   follows the theme. */
+.gl-retry {
+	align-self: flex-start;
+	margin-top: 4px;
+	padding: 5px 14px;
+	border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+	border-radius: 999px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-size: 0.86em;
+	cursor: pointer;
+	transition: border-color 120ms ease, color 120ms ease;
+}
+
+.gl-retry:hover {
+	border-color: currentColor;
+}
+
+.gl-retry:active {
+	transform: scale(0.97);
 }
 
 /* ---- playback sync ---- */

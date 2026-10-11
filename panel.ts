@@ -40,6 +40,8 @@ export interface Panel {
 	subscribe(listener: () => void): () => void;
 	/** Loads a track, replacing whatever was on screen. */
 	load(item: TrackItem | undefined): Promise<void>;
+	/** Loads the same track again, for when the last attempt failed. */
+	retry(): Promise<void>;
 	/** Opens the line's notes, or closes them if they are already open. */
 	toggle(line: number): void;
 	/** Lights the lines carrying these referent ids, or clears them on null. */
@@ -54,6 +56,9 @@ export function createPanel(transport: Transport): Panel {
 
 	/** Bumped per load so a slow response for a previous track is discarded. */
 	let generation = 0;
+
+	/** The track on screen, kept so retry() can ask for it again. */
+	let lastItem: TrackItem | undefined;
 
 	/**
 	 * The pass over a track's notes, cancelled when the listener moves on.
@@ -78,6 +83,9 @@ export function createPanel(transport: Transport): Panel {
 		const key = item?.uri ?? "";
 		const mine = ++generation;
 		openLine = null;
+		// Held so a retry can ask for the same track again; a failure is usually a
+		// cold proxy or a dropped connection, both of which clear on a second try.
+		lastItem = item;
 
 		inflight?.abort();
 		const controller = new AbortController();
@@ -115,7 +123,6 @@ export function createPanel(transport: Transport): Panel {
 			}
 
 			const referentIds = [...new Set(lines.flatMap((line) => line.referentIds))];
-			const annotationless = song?.annotationCount === 0;
 
 			// Annotations and the timing axis are independent; a track without
 			// Spotify lyrics still gets its notes. The axis is one request and decides
@@ -142,7 +149,7 @@ export function createPanel(transport: Transport): Panel {
 			const paint = () => {
 				setState({
 					state: "ready",
-					track: buildTrackView({ title, artist, lines: timed, notes, settled, annotationless }),
+					track: buildTrackView({ title, artist, lines: timed, notes, settled }),
 				});
 			};
 
@@ -182,6 +189,9 @@ export function createPanel(transport: Transport): Panel {
 		},
 		async load(item) {
 			await load(item);
+		},
+		async retry() {
+			await load(lastItem);
 		},
 		toggle(line) {
 			openLine = openLine === line ? null : line;

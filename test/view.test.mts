@@ -85,16 +85,13 @@ test("buildTrackView reports a track Genius has but with no annotations", () => 
 		lines: [line("line one"), line("line two")],
 	});
 	assert.equal(view.source, "genius");
-	assert.equal(view.annotatedCount, 0);
-	assert.equal(view.annotationless, true);
+	assert.equal(view.annotationCount, 0, "the header shows this on its own");
 });
 
 test("buildTrackView reports an empty track as having no source", () => {
 	const view = buildTrackView({ title: "x", artist: "y" });
 	assert.equal(view.source, "none");
 	assert.equal(view.lines.length, 0);
-	// Nothing on Genius at all is not the same as "no annotations".
-	assert.equal(view.annotationless, undefined);
 });
 
 test("buildTrackView keeps annotations in page order", () => {

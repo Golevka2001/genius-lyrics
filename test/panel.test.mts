@@ -206,6 +206,42 @@ test("a transport failure is reported with its reason", async () => {
 	assert.match(String(panel.state.error), /rate limit/);
 });
 
+test("retry asks for the same track again", async () => {
+	let attempts = 0;
+	const h = harness({
+		searchSong: async (title) => {
+			attempts++;
+			if (attempts === 1) throw new Error("Could not reach Genius.");
+			return [{ ...hit, title, url: `https://genius.com/${title}` }];
+		},
+	});
+	const panel = createPanel(h.transport);
+
+	await panel.load(track("one"));
+	assert.equal(panel.state.state, "failed");
+
+	await panel.retry();
+
+	assert.equal(attempts, 2, "a retry must re-ask rather than replay the failure");
+	assert.equal(panel.state.state, "ready");
+});
+
+test("retry keeps the track it failed on", async () => {
+	const asked: string[] = [];
+	const h = harness({
+		searchSong: async (title) => {
+			asked.push(title);
+			throw new Error("Could not reach Genius.");
+		},
+	});
+	const panel = createPanel(h.transport);
+
+	await panel.load(track("one"));
+	await panel.retry();
+
+	assert.deepEqual(asked, ["one", "one"], "the second attempt must be for the same track");
+});
+
 test("Spotify's synced lyrics become the timing axis", async () => {
 	// The payload is a wrapper; applyTiming wants the lines.
 	const h = harness();

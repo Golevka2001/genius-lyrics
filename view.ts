@@ -54,8 +54,6 @@ export interface TrackView {
 	annotationCount: number;
 	/** Where the lyrics came from, shown in the footer. */
 	source: "genius" | "spotify" | "none";
-	/** Set when Genius has the song but no annotations for it. */
-	annotationless?: boolean;
 }
 
 export interface BuildInput {
@@ -71,8 +69,6 @@ export interface BuildInput {
 	 * instead of waiting for the whole song's worth of them.
 	 */
 	settled?: Set<string>;
-	/** Set when Genius had the song but reported no annotations. */
-	annotationless?: boolean;
 }
 
 /**
@@ -133,7 +129,6 @@ export const buildTrackView = ({
 	lines = [],
 	notes = new Map(),
 	settled = new Set(),
-	annotationless,
 }: BuildInput): TrackView => {
 	// Every line of a spanning anchor carries the same referent id, so this one
 	// lookup attaches the note and marks the lines that share it at once — which
@@ -180,7 +175,6 @@ export const buildTrackView = ({
 		annotatedCount,
 		annotationCount,
 		source: views.length > 0 ? "genius" : "none",
-		annotationless: views.length > 0 && annotatedCount === 0 ? true : annotationless,
 	};
 };
 

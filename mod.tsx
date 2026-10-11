@@ -296,18 +296,20 @@ const Panel = () => {
 	}
 
 	if (state.state === "failed") {
+		const reason = state.error ?? "Could not reach Genius.";
 		return h(
 			"div",
 			{ className: "gl-status gl-status-error" },
-			h("p", { children: state.error ?? "Could not reach Genius." }),
-			// What to do about it. Genius sends no CORS headers, so every request
-			// goes through a proxy, and the one that ships with spicetify only
-			// carries hosts on its allowlist — which genius.com is not on. The
-			// local daemon has no such list, so that is what has to be running.
-			h("p", {
-				className: "gl-hint",
-				children: "Genius needs a CORS proxy, and spicetify's hosted one will not carry genius.com. Start the spicetify daemon and reopen this panel.",
-			}),
+			h("p", { children: reason }),
+			// The proxy hint only applies to the proxy-shaped failures; the reason
+			// above already says what to do about a rate limit or a refusal.
+			/proxy|daemon|CORS/i.test(reason)
+				? h("p", {
+						className: "gl-hint",
+						children: "Genius needs a CORS proxy, and spicetify's hosted one will not carry genius.com. Start the spicetify daemon, then retry.",
+					})
+				: null,
+			h("button", { className: "gl-retry", type: "button", onClick: () => void panel.retry(), children: "Retry" }),
 		);
 	}
 
@@ -318,6 +320,9 @@ const Panel = () => {
 			{ className: "gl-status" },
 			h("p", { children: "No lyrics on Genius for this track." }),
 			track ? h("p", { className: "gl-hint", children: `${track.title} — ${track.artist}` }) : null,
+			// Genius' search is imperfect and a page can fail to render, so the same
+			// answer is worth asking for again rather than taking as final.
+			h("button", { className: "gl-retry", type: "button", onClick: () => void panel.retry(), children: "Retry" }),
 		);
 	}
 
@@ -336,9 +341,6 @@ const Panel = () => {
 				children: `${track.annotationCount} ${track.annotationCount === 1 ? "annotation" : "annotations"}`,
 			}),
 		),
-		track.annotationless
-			? h("p", { className: "gl-empty", children: "Genius has this song but no annotations for it." })
-			: null,
 		h(
 			"div",
 			{ className: "gl-lines" },
