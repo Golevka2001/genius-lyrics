@@ -282,7 +282,11 @@ export const pickHit = (hits: SongHit[], title: string, artist: string): SongHit
 	if (hits.length === 0) return null;
 
 	const wanted = normalize(cleanTitleText(title));
-	const wantedArtist = normalize(artist);
+	// Scored one name at a time. Spotify joins several artists with ", " and Genius
+	// with " & ", which normalize folds to the same string, so comparing the joined
+	// forms made a two-artist credit count as an exact match and handed the page to
+	// whichever track credits the fewest artists.
+	const wantedArtists = artist.split(",").map(normalize).filter(Boolean);
 
 	const score = (hit: SongHit) => {
 		let value = 0;
@@ -296,12 +300,11 @@ export const pickHit = (hits: SongHit[], title: string, artist: string): SongHit
 		// "Radiohead", and scoring both alike left the tie to Genius' order, which
 		// is how a cover took the place of the song being played.
 		const hitArtist = normalize(hit.artist);
-		if (wantedArtist && hitArtist) {
-			if (hitArtist === wantedArtist) value += 3;
-			else if (hitArtist.includes(wantedArtist)) value += 2;
+		for (const name of wantedArtists) {
+			if (hitArtist === name) value += 3;
+			else if (hitArtist.includes(name)) value += 2;
 		}
-		return value;
-	};
+		return value;	};
 
 	let best = hits[0];
 	let bestScore = score(best);

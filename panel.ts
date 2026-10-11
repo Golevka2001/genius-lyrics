@@ -100,10 +100,15 @@ export function createPanel(transport: Transport): Panel {
 		setState({ state: "loading", track: null });
 
 		const title = item?.name ?? "";
-		const artist = item?.artists?.map((a) => a.name ?? "").join(", ") ?? "";
+		const names = (item?.artists ?? []).map((a) => a.name ?? "").filter(Boolean);
+		const artist = names.join(", ");
+		// Genius matches on the lead artist alone. Every name joined is a worse
+		// query: "Luis Fonsi, Daddy Yankee Despacito" returns 20 translations and
+		// neither original, where "Luis Fonsi Despacito" returns the original first.
+		const lead = names[0] ?? artist;
 
 		try {
-			const hits = await transport.searchSong(title, artist);
+			const hits = await transport.searchSong(title, lead);
 			if (mine !== generation) return;
 
 			// Genius' order can put a same-titled song by another artist first.

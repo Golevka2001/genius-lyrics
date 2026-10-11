@@ -251,6 +251,18 @@ test("pickHit still matches an artist listed alongside others", () => {
 	assert.equal(pickHit(hits, "Despacito", "Luis Fonsi, Daddy Yankee")?.id, 2);
 });
 
+test("pickHit scores each artist separately", () => {
+	// Spotify joins with ", " and Genius with " & ", and normalize folds both to
+	// one string. Comparing the joined forms made a two-artist credit an exact
+	// match, which handed the track to whichever version credits the fewest
+	// artists — the Film Version, which carries no annotations at all.
+	const hits = [
+		{ id: 1, title: "Despacito (Remix)", url: "u1", artist: "Luis Fonsi & Daddy Yankee (Ft. Justin Bieber)", annotationCount: 11 },
+		{ id: 2, title: "Despacito (Film Version)", url: "u2", artist: "Luis Fonsi & Daddy Yankee", annotationCount: 0 },
+	];
+	assert.equal(pickHit(hits, "Despacito", "Luis Fonsi, Daddy Yankee")?.id, 1);
+});
+
 test("pickHit falls back to Genius' order when nothing matches", () => {
 	const hits = [
 		{ id: 3, title: "Totally Different", url: "u3", artist: "Someone", annotationCount: 9 },

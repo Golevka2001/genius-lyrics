@@ -45,8 +45,8 @@ function harness(overrides: Partial<Transport> = {}) {
 	};
 
 	const transport: Transport = {
-		searchSong: async (title) => {
-			calls.push(`search:${title}`);
+		searchSong: async (title, artist) => {
+			calls.push(`search:${artist}|${title}`);
 			current = title;
 			return [{ ...hit, title, url: `https://genius.com/${title}` }];
 		},
@@ -102,9 +102,42 @@ function paintedLines(panel: ReturnType<typeof createPanel>) {
 
 const track = (name: string): TrackItem => ({ uri: `spotify:track:${name}`, name, artists: [{ name: "Radiohead" }] });
 
+/** The artist each search was made for, which the harness records beside the title. */
+const searchedArtists = (calls: string[]) =>
+	calls.filter((call) => call.startsWith("search:")).map((call) => call.slice("search:".length, call.lastIndexOf("|")));
+
 /** Every note id the panel is currently showing. */
 const shownIds = (panel: ReturnType<typeof createPanel>) =>
 	panel.state.track?.lines.flatMap((line) => line.notes.map((entry) => entry.referentId)) ?? [];
+
+test("the search is asked for the lead artist alone", async () => {
+	// Genius matches worse on every name joined: "Luis Fonsi, Daddy Yankee
+	// Despacito" returned 20 translations and neither original, so the query has
+	// to carry one name.
+	const h = harness();
+	const panel = createPanel(h.transport);
+
+	await panel.load({
+		uri: "spotify:track:one",
+		name: "Despacito",
+		artists: [{ name: "Luis Fonsi" }, { name: "Daddy Yankee" }],
+	});
+
+	assert.deepEqual(
+		searchedArtists(h.calls),
+		["Luis Fonsi"],
+		`expected the lead artist alone, got ${JSON.stringify(searchedArtists(h.calls))}`,
+	);
+});
+
+test("a track with no artist is searched for by title alone", async () => {
+	const h = harness();
+	const panel = createPanel(h.transport);
+
+	await panel.load({ uri: "spotify:track:one", name: "Creep", artists: [] });
+
+	assert.deepEqual(searchedArtists(h.calls), [""]);
+});
 
 test("the lyrics are painted before any note has arrived", async () => {
 	const h = harness();
