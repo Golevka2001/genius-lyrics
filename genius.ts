@@ -276,7 +276,14 @@ export const fetchSpotifyLyrics = (trackUri: string): Promise<SpotifyLyrics | nu
 
 /**
  * Report why Genius is unreachable, so the UI can explain a failure instead of
- * showing nothing. The hosted proxy's allowlist is the usual culprit.
+ * showing nothing.
+ *
+ * The "Invalid target" wording is worth spelling out: the hosted proxy answers
+ * that way only for a host missing from its allowlist, and genius.com is one of
+ * them, so it is what a client with no daemon to fall back on gets. It is a
+ * missing daemon rather than a misconfiguration, and saying so is the difference
+ * between the user starting something and the user going to look at their proxy
+ * settings.
  */
 export const detectFailure = (error: unknown): string => {
 	const text = String((error as { message?: string })?.message ?? error);
@@ -284,7 +291,7 @@ export const detectFailure = (error: unknown): string => {
 		return "Genius is rate-limiting this client (429). Wait a moment and re-run.";
 	}
 	if (/Invalid target/i.test(text)) {
-		return "Genius is not in the spicetify proxy allowlist. Start the spicetify daemon, or point the CORS proxy at your own service.";
+		return "The spicetify daemon is not running, and spicetify's hosted proxy will not carry genius.com. Start the daemon, or point the CORS proxy at your own service.";
 	}
 	if (/403|Forbidden/i.test(text)) return "Genius refused the request (anti-bot). Point the CORS proxy at your own service.";
 	if (/Failed to fetch|NetworkError|load failed/i.test(text)) {

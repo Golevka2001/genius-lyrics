@@ -8,15 +8,34 @@ copied.
 
 ## Requirements
 
-- spicetify CLI v3 with the **daemon running**. Genius never sends
-  `Access-Control-Allow-Origin`, and spicetify's hosted proxy
-  (`cors-proxy.spicetify.app`) keeps a domain allowlist that genius.com is not
-  on, so requests have to go through the local proxy at
-  `http://127.0.0.1:7967/proxy/{url}` — which the daemon serves. Without it,
-  configure your own proxy via `Spicetify.CORSProxy.configure({ mode: "custom",
-  template: "https://your-proxy/{url}" })`.
-- Genius itself needs no OAuth and no proxy for reachability; only the browser
-  same-origin policy is in the way.
+**The spicetify daemon has to be running.** This is not a nicety: without it
+this module does not work, and the failure is worth understanding.
+
+Genius never sends `Access-Control-Allow-Origin`, so every request has to go
+through a CORS proxy. `client.corsProxy` walks a chain — the local daemon at
+`http://127.0.0.1:7967/proxy/{url}` first, then spicetify's hosted proxy at
+`cors-proxy.spicetify.app` — but **the hosted one keeps a domain allowlist that
+genius.com is not on**:
+
+```console
+$ curl -s https://cors-proxy.spicetify.app/https://genius.com/api/search/song?per_page=1&q=radiohead
+{"error":"Invalid target"}
+```
+
+so the fallback is dead for this module and the daemon is the only hop that
+carries Genius. The daemon has no allowlist of its own. Requests that reach the
+hosted proxy are refused with `Invalid target`, which is what the panel reports
+when it is missing.
+
+If you would rather not run the daemon, point the proxy at your own service:
+
+```js
+Spicetify.CORSProxy.configure({ mode: "custom", template: "https://your-proxy/{url}" });
+```
+
+Genius itself needs no OAuth and no proxy to be reachable; only the browser's
+same-origin policy is in the way. The module never writes this configuration
+itself — that setting belongs to the user, per the module standard.
 
 ## Commands
 

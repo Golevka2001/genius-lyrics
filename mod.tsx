@@ -284,9 +284,13 @@ const Panel = () => {
 			"div",
 			{ className: "gl-status gl-status-error" },
 			h("p", { children: state.error ?? "Could not reach Genius." }),
+			// What to do about it. Genius sends no CORS headers, so every request
+			// goes through a proxy, and the one that ships with spicetify only
+			// carries hosts on its allowlist — which genius.com is not on. The
+			// local daemon has no such list, so that is what has to be running.
 			h("p", {
 				className: "gl-hint",
-				children: "Genius needs a CORS proxy. Make sure the spicetify daemon is running, then reopen this panel.",
+				children: "Genius needs a CORS proxy, and spicetify's hosted one will not carry genius.com. Start the spicetify daemon and reopen this panel.",
 			}),
 		);
 	}
