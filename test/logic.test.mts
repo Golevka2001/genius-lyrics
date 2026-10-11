@@ -263,6 +263,21 @@ test("pickHit scores each artist separately", () => {
 	assert.equal(pickHit(hits, "Despacito", "Luis Fonsi, Daddy Yankee")?.id, 1);
 });
 
+test("pickHit tells a remix from the track it remixes", () => {
+	// Genius ranks "Despacito (Remix)" above "Despacito" and annotates it more
+	// heavily, so stripping the parenthetical left the two tied and the remix won
+	// a Spotify track that never mentions Justin Bieber.
+	const hits = [
+		{ id: 3057010, title: "Despacito (Remix)", url: "u1", artist: "Luis Fonsi & Daddy Yankee (Ft. Justin Bieber)", annotationCount: 11 },
+		{ id: 2955220, title: "Despacito", url: "u2", artist: "Luis Fonsi & Daddy Yankee", annotationCount: 10 },
+	];
+	// The 2017 single, with no Bieber among its artists.
+	assert.equal(pickHit(hits, "Despacito", "Luis Fonsi, Daddy Yankee")?.id, 2955220);
+	// The same title once Spotify does list him, and when it says "Remix" itself.
+	assert.equal(pickHit(hits, "Despacito", "Luis Fonsi, Daddy Yankee, Justin Bieber")?.id, 3057010);
+	assert.equal(pickHit(hits, "Despacito (Remix)", "Luis Fonsi, Daddy Yankee, Justin Bieber")?.id, 3057010);
+});
+
 test("pickHit falls back to Genius' order when nothing matches", () => {
 	const hits = [
 		{ id: 3, title: "Totally Different", url: "u3", artist: "Someone", annotationCount: 9 },

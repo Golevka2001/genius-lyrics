@@ -283,10 +283,18 @@ export const pickHit = (hits: SongHit[], title: string, artist: string): SongHit
 
 	const score = (hit: SongHit) => {
 		let value = 0;
-		const hitTitle = normalize(cleanTitleText(hit.title));
+		// Compared raw first, then stripped. cleanTitleText drops any trailing
+		// parenthetical, so "Despacito (Remix)" and "Despacito" reduce to the same
+		// string and tied on the stripped form alone — which handed a plain
+		// "Despacito" the remix, since Genius ranks that one first. A decoration is
+		// only noise on the Spotify side; on Genius' it names the version.
+		const hitTitle = normalize(hit.title);
+		const wantedRaw = normalize(title);
+		const hitStripped = normalize(cleanTitleText(hit.title));
 		if (wanted && hitTitle) {
-			if (hitTitle === wanted) value += 4;
-			else if (hitTitle.includes(wanted) || wanted.includes(hitTitle)) value += 2;
+			if (hitTitle === wantedRaw) value += 4;
+			else if (hitStripped === wanted) value += 3;
+			else if (hitTitle.includes(wantedRaw) || wantedRaw.includes(hitTitle)) value += 2;
 		}
 		// Containment, because Genius lists several names joined. Exact equality
 		// still outranks it: "Radiohead (Cover Band)" contains "Radiohead", and
