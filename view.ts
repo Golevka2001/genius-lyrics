@@ -53,7 +53,7 @@ export interface TrackView {
 	 */
 	annotationCount: number;
 	/** Where the lyrics came from, shown in the footer. */
-	source: "genius" | "spotify" | "none";
+	source: "genius" | "none";
 }
 
 export interface BuildInput {
@@ -74,19 +74,14 @@ export interface BuildInput {
 /**
  * Attach Spotify's timing to Genius' lines.
  *
- * Genius supplies the text and the anchors; Spotify supplies the clock. They
- * are separate copies of the same song and are matched on normalized text.
+ * Genius supplies the text and the anchors; Spotify supplies the clock. They are
+ * separate copies of the same song, matched on normalized text and applied once
+ * per track, since the notes stream in and rebuild the view several times.
  *
- * Applied once per track rather than per repaint: the notes stream in behind the
- * first paint and rebuild the view several times, and this walks both sides of
- * the match. Its result does not change between those rebuilds.
- *
- * Measured against Bohemian Rhapsody this matched 0 of 24 lines, because Genius
- * merges a line where Spotify splits it per clause and Spotify omits the
- * intro, so the two texts diverge from the first line onward. A line that does
- * match is still worth keeping — it is exact when it happens — but the timeline
- * cannot be relied on for the track as a whole, which is why the view treats it
- * as optional and the panel falls back to plain lyrics.
+ * The axis is unreliable track-wide: against Bohemian Rhapsody this matched 0 of
+ * 24 lines, because Genius merges a line where Spotify splits it per clause and
+ * Spotify omits the intro. A line that does match is exact, so callers treat the
+ * timing as optional and fall back to plain lyrics.
  *
  * The alternative, which lyrics-plus uses, is to make Spotify's lyrics the
  * timed body and layer annotations on top; that needs a different structure
@@ -95,9 +90,6 @@ export interface BuildInput {
 export const applyTiming = (lines: LyricLine[], timing?: Array<{ text: string; startTimeMs?: number }>) => {
 	if (!timing || timing.length === 0) return lines;
 
-	// Uses logic.ts's normalize so Genius and Spotify's copies of the same line
-	// fold identically (apostrophes dropped, punctuation ignored).
-	//
 	// Repeated text is queued rather than deduplicated: a chorus appears several
 	// times with a different offset each time, and the Genius lines are identical
 	// copies of one another, so the only way to pair them is by order of

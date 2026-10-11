@@ -18,8 +18,7 @@
 
 import { client, warn } from "/modules/stdlib/mod.ts";
 import { createCache } from "./cache.ts";
-import { cleanTitleText, isOriginalSong, parseReferent, parseSearchResults, parseSong, throwIfGeniusRefused, type Annotation, type GeniusSong, type LyricLine, type SongHit, type SpotifyLyrics } from "./logic.ts";
-import { parseLyricLines } from "./logic.ts";
+import { cleanTitleText, isOriginalSong, parseLyricLines, parseReferent, parseSearchResults, parseSong, parseSpotifyLyrics, throwIfGeniusRefused, type Annotation, type GeniusSong, type LyricLine, type SongHit, type SpotifyLyrics } from "./logic.ts";
 
 const ORIGIN = "https://genius.com";
 
@@ -34,9 +33,6 @@ const ORIGIN = "https://genius.com";
 const RESULT_TTL = 10 * 60 * 1000; // ms
 const CACHE = { ttl: RESULT_TTL };
 
-/** Song titles carry decorations that only hurt search. */
-const cleanTitle = cleanTitleText;
-
 /**
  * Build search queries from a title/artist pair.
  *
@@ -44,7 +40,7 @@ const cleanTitle = cleanTitleText;
  * variants, because Genius titles rarely match Spotify's formatting exactly.
  */
 export const buildQueries = (title: string, artist: string): string[] => {
-	const base = cleanTitle(title);
+	const base = cleanTitleText(title);
 	const candidates = [title, base, base.replace(/\s*feat\..*$/i, "").trim()];
 	const queries: string[] = [];
 	for (const candidate of candidates) {
@@ -72,10 +68,6 @@ const searchPage = createCache(async (query: string): Promise<SongHit[]> => {
  *
  * URLSearchParams does the encoding: an earlier lyrics-plus revision encoded
  * the query itself and ended up double-encoded, which silently matched nothing.
- *
- * Pages are cached per query, so the loop below asks each stripped variant at
- * most once per session. An empty answer is remembered too, since Genius
- * returning nothing for a query is a stable fact for the session.
  */
 export const searchSong = async (title: string, artist: string): Promise<SongHit[]> => {
 	for (const query of buildQueries(title, artist)) {
@@ -85,7 +77,7 @@ export const searchSong = async (title: string, artist: string): Promise<SongHit
 	return [];
 };
 
-/** A song's metadata is immutable, so one fetch per id serves the session. */
+/** A song's metadata is immutable, so one fetch per id is enough. */
 const songCache = createCache(async (id: number): Promise<GeniusSong | null> => {
 	const body = (await client.cosmos.get(`${ORIGIN}/api/songs/${id}`)) as { response?: unknown; code?: number };
 	// A refusal here would otherwise read as a song with no metadata.
@@ -93,16 +85,15 @@ const songCache = createCache(async (id: number): Promise<GeniusSong | null> => 
 	return parseSong(body);
 }, CACHE);
 
-/** Fetch song metadata: title, url and the community annotation count. */
-export const fetchSong = (id: number): Promise<GeniusSong | null> => songCache.get(id);
+const fetchSong = (id: number): Promise<GeniusSong | null> => songCache.get(id);
 
 /**
- * Fetch the song metadata of the track's original, following its translations.
+ * Fetch the metadata of the track's original, following its translations.
  *
- * Search mixes originals with community translations in one list and ranks them
- * together, so "Luis Fonsi, Daddy Yankee Despacito" returned 19 translations and
- * neither original, and the page picked from it carries no annotation anchors at
- * all. Costs one extra request, and only when the hit is a translation.
+ * Search ranks originals and community translations together, so a hit can be a
+ * translation, whose notes are about another language's wording. The original is
+ * the first sibling absent from its own group, which in every group checked was
+ * the first one asked.
  */
 export const fetchOriginalSong = async (id: number): Promise<GeniusSong | null> => {
 	const song = await fetchSong(id);
@@ -122,8 +113,7 @@ export const fetchOriginalSong = async (id: number): Promise<GeniusSong | null> 
  *
  * This deliberately avoids client.cosmos: cosmos parses the body as JSON and
  * its fallback to blob/text cannot rescue an HTML page, so it rejects with a
- * JSON parse error. corsProxy.fetch hands back the raw Response, and it walks
- * the same proxy chain (local daemon first), so CORS is still handled for us.
+ * JSON parse error.
  */
 export const fetchLyricsPage = async (songUrl: string): Promise<string> => {
 	const response = await client.corsProxy.fetch(songUrl);
@@ -143,14 +133,11 @@ const lyricsCache = createCache(async (songUrl: string): Promise<LyricLine[]> =>
  * alternative (collect ids page-wide, then guess which line each belongs to by
  * matching text) misplaces notes whenever a chorus repeats or the song has
  * several verses.
- *
- * The parsed lines are cached by page url, so the fetch and the parse behind
- * this are paid once per song even when the listener comes back to it.
  */
 export const fetchLyrics = (songUrl: string): Promise<LyricLine[]> => lyricsCache.get(songUrl);
 
 /**
- * Fetch one annotation, preferring the artist's own words.
+ * Fetch one annotation, preferring the referent's own list over the bare payload.
  */
 const fetchAnnotationUncached = async (referentId: string): Promise<Annotation> => {
 	try {
@@ -192,9 +179,9 @@ export interface AnnotationBatch {
 	/** The notes in this batch that carry a body. */
 	notes: Map<string, Annotation>;
 	/**
-	 * Every id this batch answered, including the ones that turned out to have no
-	 * body. The caller needs this to tell "still loading" from "nothing to show",
-	 * which are otherwise the same empty note map.
+	 * Every id this batch answered, including the ones with no body. The caller
+	 * needs this to tell "still loading" from "nothing to show", which are
+	 * otherwise the same empty note map.
 	 */
 	settled: string[];
 }
@@ -269,7 +256,6 @@ const spotifyLyricsCache = createCache(async (trackId: string): Promise<SpotifyL
 	)) as { lyrics?: unknown; code?: number };
 
 	if (!body || typeof body !== "object" || body.code) return null;
-	const { parseSpotifyLyrics } = await import("./logic.js");
 	return parseSpotifyLyrics(body);
 }, CACHE);
 

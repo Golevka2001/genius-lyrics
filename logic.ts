@@ -15,13 +15,6 @@ export interface GeniusDomNode {
 	data?: Record<string, unknown>;
 }
 
-/**
- * Flatten Genius' DOM into plain text.
- *
- * Genius marks hard line breaks with <br>, so a break is a line boundary
- * while nested nodes are not. lyrics-plus joins children with "\n" at the
- * top level only (getChildDeep's isDeep flag); this reproduces that.
- */
 /** Tags that end a block, so the next one starts on its own line. */
 const BLOCK_TAGS = new Set(["p", "div", "blockquote", "h1", "h2", "h3", "h4", "li", "ul", "ol", "pre"]);
 
@@ -229,10 +222,10 @@ export const throwIfGeniusRefused = (payload: unknown): void => {
 /**
  * Pull the candidate songs out of /api/search/song, best match first.
  *
- * Genius mixes originals with community translations in one result list and
- * ranks them together, so which language a hit is in is not decided here: the
- * text is resolved afterwards through translation_songs. What ranking can know
- * is whether an entry carries notes.
+ * Annotated entries lead, because a translation is only ever one of many entries
+ * for a track and carrying notes is what marks a page worth reading. Which
+ * language a hit is in is not decided here — fetchOriginalSong resolves that
+ * through translation_songs.
  */
 export const parseSearchResults = (payload: unknown): SongHit[] => {
 	// A refused request has no sections, which would read as "matched nothing".
@@ -276,16 +269,16 @@ export const parseSearchResults = (payload: unknown): SongHit[] => {
 /**
  * Pick the search hit that is actually this track.
  *
- * Genius' order can put a same-titled song by another artist first.
+ * Genius' order can put a same-titled song by another artist first, so the title
+ * and the artists are scored against the track. The artist is split on commas
+ * because Spotify joins several names with ", " where Genius uses " & ", and
+ * normalize folds both to one string: compared whole, a two-artist credit reads
+ * as an exact match and wins over the version actually being played.
  */
 export const pickHit = (hits: SongHit[], title: string, artist: string): SongHit | null => {
 	if (hits.length === 0) return null;
 
 	const wanted = normalize(cleanTitleText(title));
-	// Scored one name at a time. Spotify joins several artists with ", " and Genius
-	// with " & ", which normalize folds to the same string, so comparing the joined
-	// forms made a two-artist credit count as an exact match and handed the page to
-	// whichever track credits the fewest artists.
 	const wantedArtists = artist.split(",").map(normalize).filter(Boolean);
 
 	const score = (hit: SongHit) => {
@@ -295,16 +288,16 @@ export const pickHit = (hits: SongHit[], title: string, artist: string): SongHit
 			if (hitTitle === wanted) value += 4;
 			else if (hitTitle.includes(wanted) || wanted.includes(hitTitle)) value += 2;
 		}
-		// Genius lists several names joined, so containment on the normalized form.
-		// Exact equality still wins over it: "Radiohead (Cover Band)" contains
-		// "Radiohead", and scoring both alike left the tie to Genius' order, which
-		// is how a cover took the place of the song being played.
+		// Containment, because Genius lists several names joined. Exact equality
+		// still outranks it: "Radiohead (Cover Band)" contains "Radiohead", and
+		// scoring both alike left the tie to Genius' order.
 		const hitArtist = normalize(hit.artist);
 		for (const name of wantedArtists) {
 			if (hitArtist === name) value += 3;
 			else if (hitArtist.includes(name)) value += 2;
 		}
-		return value;	};
+		return value;
+	};
 
 	let best = hits[0];
 	let bestScore = score(best);
@@ -343,11 +336,10 @@ export interface GeniusSong {
  * Whether a page is the original of its translation group.
  *
  * Genius lists a translation among its own siblings but leaves the original out,
- * so the one page absent from the list is the one a listener on Genius is shown
- * by default. This is the site's own grouping rather than a guess from the
- * title, whose markers are per language: "Svensk Översättning", "歌詞和訳" and
- * "Përkthim në Shqip" all read as original text by any word match. Each group
- * checked held exactly one page missing from its own list.
+ * so the one page absent from the list is the one a listener is shown by
+ * default. Reading the site's own grouping beats matching the title, whose
+ * markers are per language — "Svensk Översättning", "歌詞和訳" and
+ * "Përkthim në Shqip" all read as original text to any word match.
  */
 export const isOriginalSong = (song: GeniusSong): boolean => !song.translationIds.includes(song.id);
 
@@ -463,9 +455,6 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 	// blocks are not duplicates of each other — verified by hashing their text on
 	// two songs — so nothing is repeated by concatenating them.
 	const lines: LyricLine[] = [];
-	// Ids whose note has already been opened, so a repeated chorus does not
-	// attach the same note to every repeat.
-	const opened = new Set<string>();
 
 	// Kept unstripped: the duplicate and the chrome block are both fragments of
 	// another block's header, and stripping removes the text that shows it.
@@ -501,20 +490,17 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 	for (const block of chosen) {
 		const lyricBlock = stripNonLyricMarkup(block);
 		// Split on <br> into display lines and work out which note each belongs to.
-		// Four things make this more than a plain split:
+		// Three things make this more than a plain split:
 		//  - an anchor can wrap a break (<i>line one<br/>line two</i>), so a line
 		//    may carry an id opened on an earlier line, or close one;
 		//  - Genius writes an empty line before a section header as <br><br>, so
 		//    the split produces an empty piece that has to be kept;
-		//  - a repeated chorus repeats the same id, and only the first occurrence
-		//    should open the note;
 		//  - a line can hold several anchors.
 		const pieces = lyricBlock.split(/<br\s*\/?>/i);
 		const owners: string[][] = [];
-		// A span is the run of lines one anchor covers, and only its first line opens
-		// the note. `openIds` is the anchor currently open across a break, so a line
-		// inside a spanning anchor inherits its id; `spanStarts` records separately
-		// whether this line is where the note opens.
+		// `openIds` is the anchor currently open across a break, so a line inside a
+		// spanning anchor inherits its id; `spanStarts` records separately whether
+		// this line is where the note opens.
 		const spanStarts: boolean[] = [];
 		// Referent ids whose <a> is still open, so an anchor wrapping a break keeps
 		// the lines inside it. A count of opens against closes cannot decide this:
@@ -531,12 +517,9 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 			const { runs, close } = readRuns(raw, openEmphasis);
 			openEmphasis = close;
 			runsByLine.push(runs);
-			// A line that carries an id is the line the note opens on. Genius puts the
-			// id on the first line of the span, and a later line that repeats the same
-			// id is the start of a fresh span, so this is decided by the id alone
-			// rather than by whether some anchor is currently open — the anchor
-			// opened above a break only means this line is inside it, and that line
-			// must not open anything.
+			// A line carrying an id is where its note opens. Decided by the id alone,
+			// not by whether an anchor is currently open: an anchor opened above a
+			// break only means this line is inside that span, and must not open it.
 			const ids = collectReferentIds(raw);
 			spanStarts.push(ids.length > 0);
 			// Every anchor open anywhere in this line, whether opened here or above a
@@ -572,17 +555,11 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 				continue;
 			}
 
-			// Every line a spanning anchor covers keeps the id, so the region can be
-			// highlighted as one piece the way Genius does. `opened` then decides
-			// which line fetches and shows the note: an id repeated later in the song
-			// is the same note about a repeated phrase and must not open twice, while
-			// the lines inside one anchor are all part of the same note and any of
-			// them can open it.
+			// Every line a spanning anchor covers keeps the id, so the region is
+			// highlighted as one piece the way Genius does. Only the line the anchor
+			// opens on is marked as the start; the rest continue the span.
 			const owned = owners[index];
 			const isStart = owned.length > 0 && spanStarts[index];
-			for (const id of owned) {
-				if (isStart) opened.add(id);
-			}
 			// Continuations carry an id they inherited, which is what keeps the span
 			// highlighted as one block of lines rather than as separate notes.
 			// Only carried when something is styled; a plain line keeps just its text.
@@ -797,6 +774,9 @@ export const parseSpotifyLyrics = (payload: unknown): SpotifyLyrics | null => {
 	};
 };
 
+/** One run of text inside a paragraph, with the links among it preserved. */
+export type NoteSpan = { text: string } | { text: string; href: string };
+
 /**
  * A paragraph inside an annotation, kept apart from the text.
  *
@@ -805,9 +785,6 @@ export const parseSpotifyLyrics = (payload: unknown): SpotifyLyrics | null => {
  * that. Rendering needs the blocks, not just a string, so a note carries a
  * `blocks` list alongside the flat `text` kept for length checks and previews.
  */
-/** One run of text inside a paragraph, with the links among it preserved. */
-export type NoteSpan = { text: string } | { text: string; href: string };
-
 export type NoteBlock =
 	| { kind: "paragraph"; spans: NoteSpan[] }
 	| { kind: "quote"; lines: NoteSpan[][] }

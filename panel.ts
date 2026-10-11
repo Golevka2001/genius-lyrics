@@ -9,7 +9,7 @@
  */
 
 import { pickHit, type Annotation, type GeniusSong, type LyricLine, type SongHit, type SpotifyLyrics } from "./logic.ts";
-import { applyTiming, buildTrackView, type PanelState } from "./view.ts";
+import { applyTiming, buildTrackView, INITIAL_STATE, type PanelState } from "./view.ts";
 import type { AnnotationBatch } from "./genius.ts";
 
 export interface TrackItem {
@@ -50,7 +50,7 @@ export interface Panel {
 }
 
 export function createPanel(transport: Transport): Panel {
-	let state: PanelState = { state: "loading", track: null };
+	let state: PanelState = INITIAL_STATE;
 	let openLine: number | null = null;
 	let hoverIds: string[] | null = null;
 	const listeners = new Set<() => void>();
@@ -111,16 +111,13 @@ export function createPanel(transport: Transport): Panel {
 			const hits = await transport.searchSong(title, lead);
 			if (mine !== generation) return;
 
-			// Genius' order can put a same-titled song by another artist first.
+			// Scored against every name, not the one the query was made with.
 			const hit = pickHit(hits, title, artist);
 			if (!hit) {
 				setState({ state: "no-genius", track: buildTrackView({ title, artist }) });
 				return;
 			}
 
-			// The song first, because the page to read is the original's rather than
-			// whichever hit search ranked first: a translation carries its own
-			// lyrics, and notes about that language's wording.
 			const song = await transport.fetchOriginalSong(hit.id);
 			if (mine !== generation) return;
 
