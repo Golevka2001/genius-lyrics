@@ -485,21 +485,18 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 		blocks.push(html.slice(start, end));
 	}
 
-	// Genius renders the lyrics twice: once split across several containers, and
-	// once as a plain-text duplicate. Which is which is not a fixed question — only
-	// the first section of an annotated song carries anchors, so filtering on
+	// Genius renders the lyrics twice: once split across containers, once as one
+	// plain-text duplicate. Only the first section has anchors, so filtering on
 	// anchors kept that section and dropped the rest of the song.
 	//
-	// Content settles it instead: a block whose text sits inside another block's is
-	// the copy. A tie goes to the block with anchors, which is the one worth
-	// reading.
+	// A block whose text sits inside another block's is the copy. Ties go to the
+	// anchored one.
 	const raw = blocks.map((block) => plainText(block));
 	const anchored = blocks.map((block) => {
 		const has = REFERENT_HREF.test(block);
 		REFERENT_HREF.lastIndex = 0;
 		return has;
 	});
-	// A tie goes to the anchored copy.
 	const chosen = blocks.filter(
 		(_, index) =>
 			!raw.some(

@@ -212,7 +212,7 @@ test("parseLyricLines drops the plain-text duplicate when nothing is annotated",
 });
 
 test("parseSearchResults throws when Genius refused the request", () => {
-	// A refusal carries only a status, which must not read as "no results".
+	// A refusal must not read as "no results".
 	assert.throws(() => parseSearchResults({ code: 403, error: "Forbidden" }), /403/);
 	assert.throws(() => parseSearchResults({ code: 429 }), /rate limit/i);
 	assert.deepEqual(parseSearchResults({ response: { sections: [] } }), []);
@@ -276,7 +276,7 @@ test("parseSpotifyLyrics handles unsynced lyrics and absent payloads", () => {
 });
 
 test("parseSearchResults throws on a rate-limited body and stays quiet on an empty one", () => {
-	// Every refusal throws, so a caller sees one failure kind.
+	// Every refusal throws.
 	assert.throws(() => parseSearchResults({ code: 429 }), /rate limit/i);
 	assert.deepEqual(parseSearchResults({}), []);
 	assert.deepEqual(parseSearchResults(null), []);
@@ -289,9 +289,8 @@ test("parseReferent ignores a rate-limited body", () => {
 });
 
 test("parseLyricLines keeps sections that carry no anchors", () => {
-	// Only the first section of a song has annotations, so filtering on anchors
-	// kept that section and dropped everything after it — the panel showed a third
-	// of the song and reported no error.
+	// Only the first section has anchors, so filtering on those kept it and
+	// dropped the rest of the song.
 	const html = `<div data-lyrics-container="true">[Intro]<br/>opening line<br/>
 		<a href="/123/x/second-line">second line</a></div>
 		<div data-lyrics-container="true">[Chorus]<br/>no anchors here<br/>but still lyrics</div>`;
