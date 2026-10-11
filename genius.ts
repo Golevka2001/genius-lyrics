@@ -1,19 +1,7 @@
 /*
- * Transport for Genius' web-internal JSON API.
- *
- * No OAuth: api.genius.com needs a client secret and a Bearer token, whereas
- * genius.com/api/* is what the website itself calls and needs neither. The
- * catch is that Genius never sends Access-Control-Allow-Origin, so these
- * requests have to go through a CORS proxy. client.cosmos does that for us:
- * spicetify's wrapper routes any non-Spotify host through its proxy chain
- * (local daemon first, then the hosted proxy), so no proxy is named here.
- *
- * The hosted proxy keeps a domain allowlist that genius.com is not on, so this
- * works on a machine running the spicetify daemon and otherwise needs a custom
- * proxy via Spicetify.CORSProxy.configure(). detectFailure() reports which.
- *
- * Verified reachable on 2026-10-05: search/song, songs/{id}, referents/{id},
- * annotations/{id}, and the rendered lyrics page.
+ * Genius sends no CORS header, so every request here goes through spicetify's
+ * proxy chain. The hosted end of that chain allowlists domains genius.com is not
+ * on, which is what the daemon is for; detectFailure() tells the two apart.
  */
 
 import { client, warn } from "/modules/stdlib/mod.ts";
@@ -22,23 +10,11 @@ import { cleanTitleText, isOriginalSong, parseLyricLines, parseReferent, parseSe
 
 const ORIGIN = "https://genius.com";
 
-/**
- * How long a fetched result is reused, and how long it is kept at all.
- *
- * Ten minutes is the window lyrics-plus keeps its data for: a song heard again
- * inside it costs nothing, and one heard after it is fetched fresh. Sizing by
- * time rather than by entry count is what stops the caches growing for as long
- * as the client stays open.
- */
+// The window lyrics-plus keeps its data for.
 const RESULT_TTL = 10 * 60 * 1000; // ms
 const CACHE = { ttl: RESULT_TTL };
 
-/**
- * Build search queries from a title/artist pair.
- *
- * Ordering matters: the full title is tried first, then progressively stripped
- * variants, because Genius titles rarely match Spotify's formatting exactly.
- */
+// Genius titles rarely match Spotify's formatting, so each is tried stripped too.
 export const buildQueries = (title: string, artist: string): string[] => {
 	const base = cleanTitleText(title);
 	const candidates = [title, base, base.replace(/\s*feat\..*$/i, "").trim()];
@@ -51,11 +27,9 @@ export const buildQueries = (title: string, artist: string): string[] => {
 	return queries;
 };
 
-/** One search page, keyed by the query string it was asked for. */
 const searchPage = createCache(async (query: string): Promise<SongHit[]> => {
-	// A wide page on purpose: Genius mixes community translations into the result
-	// list and ranks them alongside originals, so a narrow one can return nothing
-	// but translations of the track.
+	// Wide because Genius ranks community translations alongside originals,
+	// and a narrow page can come back with nothing but translations.
 	const perPage = "30";
 	const url = `${ORIGIN}/api/search/song?${new URLSearchParams({ per_page: perPage, q: query })}`;
 	const body = (await client.cosmos.get(url)) as { response?: unknown; code?: number };
@@ -63,12 +37,6 @@ const searchPage = createCache(async (query: string): Promise<SongHit[]> => {
 	return parseSearchResults(body);
 }, CACHE);
 
-/**
- * Find the Genius song for a track.
- *
- * URLSearchParams does the encoding: an earlier lyrics-plus revision encoded
- * the query itself and ended up double-encoded, which silently matched nothing.
- */
 export const searchSong = async (title: string, artist: string): Promise<SongHit[]> => {
 	for (const query of buildQueries(title, artist)) {
 		const hits = await searchPage.get(query);
@@ -77,24 +45,18 @@ export const searchSong = async (title: string, artist: string): Promise<SongHit
 	return [];
 };
 
-/** A song's metadata is immutable, so one fetch per id is enough. */
 const songCache = createCache(async (id: number): Promise<GeniusSong | null> => {
 	const body = (await client.cosmos.get(`${ORIGIN}/api/songs/${id}`)) as { response?: unknown; code?: number };
-	// A refusal here would otherwise read as a song with no metadata.
+	// A refusal carries only a status, so it would otherwise read as a song with no metadata.
 	throwIfGeniusRefused(body);
 	return parseSong(body);
 }, CACHE);
 
 const fetchSong = (id: number): Promise<GeniusSong | null> => songCache.get(id);
 
-/**
- * Fetch the metadata of the track's original, following its translations.
- *
- * Search ranks originals and community translations together, so a hit can be a
- * translation, whose notes are about another language's wording. The original is
- * the first sibling absent from its own group, which in every group checked was
- * the first one asked.
- */
+// A hit can be a translation, whose notes are about another language's wording.
+// The original is the first sibling absent from its own group, which in every
+// group checked was the first one asked.
 export const fetchOriginalSong = async (id: number): Promise<GeniusSong | null> => {
 	const song = await fetchSong(id);
 	if (!song || isOriginalSong(song)) return song;
@@ -107,14 +69,8 @@ export const fetchOriginalSong = async (id: number): Promise<GeniusSong | null> 
 	return song;
 };
 
-/**
- * Fetch the rendered lyrics page, which is the only place the lyrics and their
- * annotation anchors exist.
- *
- * This deliberately avoids client.cosmos: cosmos parses the body as JSON and
- * its fallback to blob/text cannot rescue an HTML page, so it rejects with a
- * JSON parse error.
- */
+// Lyrics and anchors exist only in the rendered page.
+// Not client.cosmos: it parses the body as JSON and rejects an HTML page.
 export const fetchLyricsPage = async (songUrl: string): Promise<string> => {
 	const response = await client.corsProxy.fetch(songUrl);
 	if (!response.ok) throw new Error(`Genius page failed: ${response.status} ${response.statusText}`);
@@ -126,34 +82,26 @@ const lyricsCache = createCache(async (songUrl: string): Promise<LyricLine[]> =>
 	CACHE,
 );
 
-/**
- * Fetch the lyrics together with the annotation anchors on each line.
- *
- * One request covers both, because the anchors live in the same markup: the
- * alternative (collect ids page-wide, then guess which line each belongs to by
- * matching text) misplaces notes whenever a chorus repeats or the song has
- * several verses.
- */
+// One request covers both, since the anchors live in the same markup. Collecting
+// ids page-wide and matching them to lines by text misplaces notes wherever a
+// chorus repeats.
 export const fetchLyrics = (songUrl: string): Promise<LyricLine[]> => lyricsCache.get(songUrl);
 
-/**
- * Fetch one annotation, preferring the referent's own list over the bare payload.
- */
 const fetchAnnotationUncached = async (referentId: string): Promise<Annotation> => {
 	try {
 		const body = (await client.cosmos.get(`${ORIGIN}/api/referents/${referentId}`)) as {
 			response?: unknown;
 			code?: number;
 		};
-		// Genius rate-limits by responding 429 with no sections/referent, so a
-		// coded body means "not available right now", not "no annotation".
+		// Genius answers 429 with no referent at all, so a coded body means
+		// "not right now" rather than "no annotation".
 		if (body?.code === 429) throw new Error("Genius rate limit reached (429)");
 		const annotation = parseReferent(body, referentId);
 		if (annotation.text) return annotation;
 	} catch (error) {
-		// A referent can 404 while Genius is still indexing; the plain
-		// annotation endpoint usually still resolves in that case. A rate limit
-		// must not be retried into the same wall, so rethrow it.
+		// A referent can 404 while Genius is still indexing; the annotations
+		// endpoint usually resolves in that case. A rate limit must not be
+		// retried into the same wall.
 		if (error instanceof Error && /rate limit/i.test(error.message)) throw error;
 	}
 
@@ -171,15 +119,13 @@ const fetchAnnotationUncached = async (referentId: string): Promise<Annotation> 
 	}
 };
 
-/** Referents are immutable per song, so one lookup per id is enough. */
 const annotationCache = createCache(fetchAnnotationUncached, CACHE);
 
-/** What one batch of the referents resolved. */
 export interface AnnotationBatch {
 	/** The notes in this batch that carry a body. */
 	notes: Map<string, Annotation>;
 	/**
-	 * Every id this batch answered, including the ones with no body. The caller
+	 * Every id this batch answered, including the ones with no body: the caller
 	 * needs this to tell "still loading" from "nothing to show", which are
 	 * otherwise the same empty note map.
 	 */
@@ -187,25 +133,17 @@ export interface AnnotationBatch {
 }
 
 export interface AnnotationOptions {
-	/**
-	 * Stops the pass between batches. client.cosmos.get takes no AbortSignal, so the
-	 * batch in flight still lands — this keeps the rest from being sent at all,
-	 * which is most of the work on a 50-referent song.
-	 */
+	// Stops the pass between batches. client.cosmos.get takes no AbortSignal, so
+	// the batch in flight still lands; this keeps the rest from being sent.
 	signal?: AbortSignal;
 	/** Called after each batch, so the panel can paint notes as they arrive. */
 	onBatch?: (batch: AnnotationBatch) => void;
 }
 
-/**
- * Resolve every annotation referenced by the lyrics, keyed by referent id.
- *
- * Fetched in small batches: a popular song carries 50+ referents at roughly a
- * second each, and requesting them all at once trips Genius' rate limiter. The
- * cache sits under the batching, so an id already held or in flight resolves
- * without spending a slot and two overlapping loads share one request per id. A
- * rate-limited failure is dropped from the cache, so the next ask retries it.
- */
+// A popular song carries 50+ referents and asking for them all at once trips the
+// rate limiter. The cache sits under the batching, so an id already held or in
+// flight costs no slot and overlapping loads share one request. A rate-limited
+// failure is dropped from the cache, so the next ask retries it.
 export const fetchAnnotations = async (
 	referentIds: string[],
 	{ signal, onBatch }: AnnotationOptions = {},
@@ -216,8 +154,7 @@ export const fetchAnnotations = async (
 
 	const BATCH_SIZE = 4;
 	for (let i = 0; i < unique.length; i += BATCH_SIZE) {
-		// The listener moved on, so the batches after this one are requests
-		// nobody would read.
+		// The listener moved on; the rest would be requests nobody reads.
 		if (signal?.aborted) break;
 
 		const batch = unique.slice(i, i + BATCH_SIZE);
@@ -229,16 +166,14 @@ export const fetchAnnotations = async (
 			settled.push(id);
 			settledHere.settled.push(id);
 			if (result.status === "fulfilled") {
-				// An annotation with no body is remembered as "nothing to show" so
-				// it is not asked for again, but it never enters the map.
+				// A bodyless annotation is still cached as answered, so it is not
+				// asked for again, but it never enters the map.
 				if (result.value.text) {
 					notes.set(id, result.value);
 					settledHere.notes.set(id, result.value);
 				}
 				return;
 			}
-			// Losing one note is survivable; losing the batch to a rate limit is
-			// worth surfacing.
 			warn("[genius-lyrics] annotation batch failed", id, String(result.reason));
 		});
 
@@ -257,27 +192,16 @@ const spotifyLyricsCache = createCache(async (trackId: string): Promise<SpotifyL
 	return parseSpotifyLyrics(body);
 }, CACHE);
 
-/**
- * Spotify's own lyrics, used purely for the timing axis.
- *
- * Returns null when the track simply has none — many tracks, especially
- * non-English ones, 404 here — which is not an error the caller should treat
- * as a broken transport.
- */
+// Used purely for the timing axis. Null when the track has none — many tracks,
+// especially non-English ones, 404 here — which is not a broken transport.
 export const fetchSpotifyLyrics = (trackUri: string): Promise<SpotifyLyrics | null> => {
 	const id = trackUri.split(":").pop();
 	if (!id) return Promise.resolve(null);
 	return spotifyLyricsCache.get(id);
 };
 
-/**
- * Report why Genius is unreachable, so the UI can explain a failure.
- *
- * "Invalid target" is worth spelling out: the hosted proxy answers that way only
- * for a host missing from its allowlist, and genius.com is one, so it is what a
- * client with no daemon to fall back on gets. Saying so is the difference between
- * the user starting something and going to look at their proxy settings.
- */
+// "Invalid target" is the hosted proxy answering for a host missing from its
+// allowlist, which genius.com is: it means no daemon, not a misconfiguration.
 export const detectFailure = (error: unknown): string => {
 	const text = String((error as { message?: string })?.message ?? error);
 	if (/rate limit|429/i.test(text)) {
@@ -286,8 +210,7 @@ export const detectFailure = (error: unknown): string => {
 	if (/Invalid target/i.test(text)) {
 		return "The spicetify daemon is not running, and spicetify's hosted proxy will not carry genius.com. Start the daemon, or point the CORS proxy at your own service.";
 	}
-	// The daemon is necessary but not sufficient: it forwards the request and
-	// Cloudflare refuses it from the exit IP.
+	// The daemon forwards, but Cloudflare refuses it from the exit IP.
 	if (/403|Forbidden|refused/i.test(text)) {
 		return "Genius refused the request (403, anti-bot protection). The proxy's exit address is being blocked by Cloudflare; point the CORS proxy at a service that requests genius.com with browser-like headers.";
 	}

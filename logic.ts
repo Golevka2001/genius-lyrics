@@ -1,10 +1,6 @@
 /*
- * Client-free parsing for Genius' payloads.
- *
- * Everything here is pure: no /modules/* import, no client global, no network.
- * That keeps it runnable under `node --test` and keeps the transport layer
- * (genius.ts) swappable — the endpoints below are Genius' own web-internal
- * JSON APIs, which need no OAuth and send no CORS headers.
+ * Pure parsing for Genius' payloads: no client, no network, so it runs under
+ * `bun test` and genius.ts stays the only thing that talks to the API.
  */
 
 /** A node in Genius' lyrics DOM. Children are strings or nested nodes. */
@@ -15,23 +11,12 @@ export interface GeniusDomNode {
 	data?: Record<string, unknown>;
 }
 
-/** Tags that end a block, so the next one starts on its own line. */
+// Tags that end a block, so the next one starts on its own line.
 const BLOCK_TAGS = new Set(["p", "div", "blockquote", "h1", "h2", "h3", "h4", "li", "ul", "ol", "pre"]);
 
-/**
- * Flatten Genius' prose DOM into plain text that keeps the author's layout.
- *
- * Annotations are written as prose: paragraphs, quoted lyric excerpts in
- * <blockquote>, album and artist names wrapped in <a>, <em> for foreign titles,
- * <br> for hard breaks and the occasional <img>. Flattening every node to text
- * ran all of it together, which is why notes read as a wall of sentences where
- * Genius shows distinct paragraphs and indented quotes.
- *
- * Only the structure is preserved, not the styling: links keep their text, and
- * an image becomes a short marker rather than being dropped silently. Tags that
- * only carry formatting (em, strong, sup) are transparent, so an italic album
- * title does not break the line.
- */
+// Keeps the author's paragraph and quote structure, which flattening to bare
+// text ran together into a wall of sentences. Styling is not kept: links keep
+// their text and formatting tags stay transparent.
 export const domToText = (node: GeniusDomNode | string | undefined | null): string => {
 	if (node === undefined || node === null) return "";
 	if (typeof node === "string") return node;
@@ -52,8 +37,7 @@ export const domToText = (node: GeniusDomNode | string | undefined | null): stri
 		}
 
 		if (tag === "img") {
-			// Alt text is usually empty and a bare marker would read as noise, so
-			// say there was an image and leave it at that.
+			// Alt text is usually empty and a bare marker would read as noise.
 			const alt = child.attributes?.alt?.trim();
 			parts.push(alt ? `[${alt}]` : "[image]");
 			continue;
@@ -62,8 +46,8 @@ export const domToText = (node: GeniusDomNode | string | undefined | null): stri
 		const inner = domToText(child);
 
 		if (tag === "blockquote") {
-			// Quote the excerpt's own lines with a marker so a sampled lyric reads
-			// as quoted rather than as more of the annotation's argument.
+			// Marked so a sampled lyric reads as quoted rather than as more of the
+			// annotation's own argument.
 			const quoted = inner.split("\n").map((line) => (line.trim() ? `> ${line.trim()}` : ">"));
 			parts.push(`\n${quoted.join("\n")}\n`);
 			continue;
@@ -75,15 +59,8 @@ export const domToText = (node: GeniusDomNode | string | undefined | null): stri
 	return parts.join("").replace(/\n{3,}/g, "\n\n").trim();
 };
 
-/**
- * Reduce text to comparable letters.
- *
- * Genius' fragments are de-accented and de-punctuated, and they drop the
- * apostrophe entirely: its referent for "Conect, dn't run dry" reads
- * "Conect dnt run dry". Keeping apostrophes here made every contraction fail
- * to match, so they go too. Exported because matching Spotify's copy of a
- * line against Genius' has to fold text the same way.
- */
+// Genius drops the apostrophe outright — its referent for "Conect, dn't run dry"
+// reads "Conect dnt run dry" — so keeping one made every contraction fail to match.
 export const normalize = (value: string) =>
 	value
 		.toLowerCase()
@@ -91,7 +68,6 @@ export const normalize = (value: string) =>
 		.replace(/[“”]/g, "")
 		.replace(/[^a-z0-9\n]/g, "");
 
-/** Strip the decorations a Spotify title carries that only hurt a comparison. */
 export const cleanTitleText = (title: string) =>
 	title
 		.replace(/\s*[-–—]\s*(remaster|remastered|version|edit|mix|live|mono|stereo).*$/i, "")
@@ -99,32 +75,21 @@ export const cleanTitleText = (title: string) =>
 		.trim();
 
 export interface Annotation {
-	/** Referent id, taken from the first numeric path segment. */
 	referentId: string;
 	/** The lyric fragment this annotation is anchored to. */
 	fragment: string;
-	/** Annotation body as plain text, kept for previews and emptiness checks. */
+	/** Kept flat for emptiness checks, alongside the renderable blocks. */
 	text: string;
-	/** The body as renderable blocks, since annotations are structured prose. */
 	blocks: NoteBlock[];
-	/**
-	 * True when the artist wrote the note themselves, which Genius marks as
-	 * verified. The site tints those yellow instead of grey, so the panel does.
-	 */
+	/** The artist wrote this one themselves; Genius tints those yellow. */
 	verified: boolean;
-	/** Where the body came from, which decides precedence. */
+	/** Which endpoint supplied the body, which decides precedence. */
 	source: "referent" | "annotation" | "none";
-	/**
-	 * Genius users credited on the annotation, strongest attribution first.
-	 * A single annotation is routinely co-signed by several people, so this is a
-	 * list rather than one name.
-	 */
+	/** Credited writers, strongest attribution first: one note is often co-signed. */
 	authors: string[];
-	/** Upvotes on the annotation, which is how Genius ranks its own front page. */
 	votes?: number;
 }
 
-/** The prose DOM inside an annotation body, which is nested under `dom`. */
 const bodyOf = (entry: Record<string, unknown> | undefined): GeniusDomNode | undefined =>
 	(entry?.body as { dom?: GeniusDomNode } | undefined)?.dom;
 
@@ -133,27 +98,15 @@ const readDom = (value: unknown): string => {
 	return domToText((value as { dom?: GeniusDomNode }).dom);
 };
 
-/**
- * Build an annotation from a referent payload.
- *
- * The referent carries the artist's own annotation, which is authoritative; a
- * bare annotation payload covers the referents Genius serves without that list.
- */
 export const parseReferent = (payload: unknown, referentId: string): Annotation => {
 	const response = (payload as { response?: Record<string, unknown> })?.response ?? {};
 	const referent = (response.referent ?? {}) as Record<string, unknown>;
 	const fragment = typeof referent.fragment === "string" ? referent.fragment : "";
-	/**
-	 * Which endpoint served the body decides where the verified flag survives:
-	 * referents/ reports it on both the referent and its annotation, but
-	 * annotations/ — the fallback — keeps it only on the referent, and reports
-	 * the annotation as merely accepted. Reading both is what keeps a verified
-	 * note yellow either way.
-	 */
+	// Read from both ends: referents/ reports it on the referent and on its
+	// annotation, but annotations/ — the fallback — keeps it only on the referent
+	// and calls the annotation merely accepted.
 	const verified = referent.classification === "verified";
 
-	// Prefer the referent's own annotation list; fall back to a standalone
-	// annotation payload for referents Genius serves without the list attached.
 	const annotation = (response.annotation ?? {}) as Record<string, unknown>;
 	const referentAnnotations = (referent.annotations ?? []) as Array<Record<string, unknown>>;
 	const candidates = referentAnnotations.length > 0 ? referentAnnotations : [annotation];
@@ -168,10 +121,8 @@ export const parseReferent = (payload: unknown, referentId: string): Annotation 
 	}
 	const text = readDom(best.body);
 
-	// The credited writers live in `authors`, ordered by how much of the
-	// annotation each contributed. `annotator_login` is the Genius account that
-	// created the *referent*, which is a moderator handle rather than the writer
-	// — using it credited every note on a track to whoever happened to open it.
+	// `authors` holds the credited writers. `annotator_login` is whoever opened
+	// the referent, which is a moderator handle, not the writer.
 	const credited = [
 		...((best.authors as Array<Record<string, unknown>> | undefined) ?? []),
 		...((annotation.authors as Array<Record<string, unknown>> | undefined) ?? []),
@@ -203,12 +154,7 @@ export interface SongHit {
 	annotationCount: number;
 }
 
-/**
- * Turn a refused Genius response into an error instead of an empty result.
- *
- * A refusal carries only a status, which would otherwise read as "this matched
- * nothing" — reporting a song as absent from Genius when Genius never answered.
- */
+// A refusal carries only a status, so without this it reads as "matched nothing".
 export const throwIfGeniusRefused = (payload: unknown): void => {
 	const code = (payload as { code?: unknown } | null | undefined)?.code;
 	if (typeof code !== "number" || code < 400) return;
@@ -219,16 +165,8 @@ export const throwIfGeniusRefused = (payload: unknown): void => {
 	);
 };
 
-/**
- * Pull the candidate songs out of /api/search/song, best match first.
- *
- * Annotated entries lead, because a translation is only ever one of many entries
- * for a track and carrying notes is what marks a page worth reading. Which
- * language a hit is in is not decided here — fetchOriginalSong resolves that
- * through translation_songs.
- */
+// Which language a hit is in is settled later, by fetchOriginalSong.
 export const parseSearchResults = (payload: unknown): SongHit[] => {
-	// A refused request has no sections, which would read as "matched nothing".
 	throwIfGeniusRefused(payload);
 
 	const sections = (payload as { response?: { sections?: Array<Record<string, unknown>> } })?.response
@@ -257,8 +195,7 @@ export const parseSearchResults = (payload: unknown): SongHit[] => {
 		}
 	}
 
-	// Annotated entries first, Genius' order breaking ties. Which language a page
-	// is in is settled afterwards, through translation_songs.
+	// Annotated entries first, Genius' order breaking ties.
 	const rank = (hit: SongHit) => (hit.annotationCount > 0 ? 1 : 2);
 	return hits
 		.map((hit, index) => ({ hit, index }))
@@ -266,28 +203,23 @@ export const parseSearchResults = (payload: unknown): SongHit[] => {
 		.map((entry) => entry.hit);
 };
 
-/**
- * Pick the search hit that is actually this track.
- *
- * Genius' order can put a same-titled song by another artist first, so the title
- * and the artists are scored against the track. The artist is split on commas
- * because Spotify joins several names with ", " where Genius uses " & ", and
- * normalize folds both to one string: compared whole, a two-artist credit reads
- * as an exact match and wins over the version actually being played.
- */
+// Genius puts a same-titled song by another artist first, so title and artists
+// are scored against the track.
 export const pickHit = (hits: SongHit[], title: string, artist: string): SongHit | null => {
 	if (hits.length === 0) return null;
 
 	const wanted = normalize(cleanTitleText(title));
+	// Split on commas: Spotify joins names with ", " where Genius uses " & ", and
+	// normalize folds both to one string, so compared whole a two-artist credit
+	// reads as an exact match and beats the version actually being played.
 	const wantedArtists = artist.split(",").map(normalize).filter(Boolean);
 
 	const score = (hit: SongHit) => {
 		let value = 0;
-		// Compared raw first, then stripped. cleanTitleText drops any trailing
-		// parenthetical, so "Despacito (Remix)" and "Despacito" reduce to the same
-		// string and tied on the stripped form alone — which handed a plain
-		// "Despacito" the remix, since Genius ranks that one first. A decoration is
-		// only noise on the Spotify side; on Genius' it names the version.
+		// Raw first, then stripped: cleanTitleText drops any trailing parenthetical,
+		// so "Despacito (Remix)" and "Despacito" would otherwise tie and the remix
+		// would win, since Genius ranks it first. A decoration is noise on the
+		// Spotify side; on Genius' it names the version.
 		const hitTitle = normalize(hit.title);
 		const wantedRaw = normalize(title);
 		const hitStripped = normalize(cleanTitleText(hit.title));
@@ -296,9 +228,8 @@ export const pickHit = (hits: SongHit[], title: string, artist: string): SongHit
 			else if (hitStripped === wanted) value += 3;
 			else if (hitTitle.includes(wantedRaw) || wantedRaw.includes(hitTitle)) value += 2;
 		}
-		// Containment, because Genius lists several names joined. Exact equality
-		// still outranks it: "Radiohead (Cover Band)" contains "Radiohead", and
-		// scoring both alike left the tie to Genius' order.
+		// Containment, since Genius lists several names joined. Exact equality still
+		// outranks it: "Radiohead (Cover Band)" contains "Radiohead".
 		const hitArtist = normalize(hit.artist);
 		for (const name of wantedArtists) {
 			if (hitArtist === name) value += 3;
@@ -331,34 +262,19 @@ export interface GeniusSong {
 	 */
 	translationIds: number[];
 	/**
-	 * Genius' editorial notes about the song, not the lyrics.
-	 *
-	 * description.dom is prose ("According to Thom Yorke, ..."), so it is
-	 * useful context but must never be treated as lyric lines: aligning
-	 * annotations against it would attach every note to the wrong text.
+	 * Genius' editorial notes, not the lyrics: description.dom is prose, so
+	 * aligning annotations against it would attach every note to the wrong text.
 	 */
 	description: string;
 }
 
-/**
- * Whether a page is the original of its translation group.
- *
- * Genius lists a translation among its own siblings but leaves the original out,
- * so the one page absent from the list is the one a listener is shown by
- * default. Reading the site's own grouping beats matching the title, whose
- * markers are per language — "Svensk Översättning", "歌詞和訳" and
- * "Përkthim në Shqip" all read as original text to any word match.
- */
+// Genius lists a translation among its own siblings but leaves the original out,
+// so the one page absent from the list is the one a listener is shown by default.
+// Reading the site's grouping beats matching the title, whose markers are per
+// language: "Svensk Översättning" and "歌詞和訳" read as original to any word match.
 export const isOriginalSong = (song: GeniusSong): boolean => !song.translationIds.includes(song.id);
 
-/**
- * Read the song payload.
- *
- * Note what this does NOT return: lyrics. Genius keeps lyrics out of this
- * payload entirely — description.dom holds the editor's prose. The actual
- * lyric lines only exist in the rendered page, so callers need
- * parseLyricLines() for those.
- */
+// No lyrics here: Genius keeps them out of this payload entirely.
 export const parseSong = (payload: unknown): GeniusSong | null => {
 	const song = (payload as { response?: { song?: Record<string, unknown> } })?.response?.song;
 	if (!song || typeof song.id !== "number") return null;
@@ -396,15 +312,9 @@ const decodeEntities = (value: string) =>
 		.replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
 		.replace(/&#x([0-9a-f]+);/gi, (_, code: string) => String.fromCodePoint(Number.parseInt(code, 16)));
 
-/**
- * A lyric line together with the annotations anchored to it.
- *
- * The anchor comes from Genius itself rather than a later guess: in the
- * rendered page each annotated fragment is wrapped in <a href="/<id>/...">, so
- * reading the anchors in document order is the only way to know which line a
- * note belongs to. Matching fragments back to lines by text gets this wrong
- * whenever a song repeats a chorus, and it cannot tell two verses apart.
- */
+// The anchors come from Genius rather than a later guess: each annotated fragment
+// is wrapped in <a href="/<id>/...">, and matching fragments to lines by text
+// misplaces a note wherever a chorus repeats.
 export interface LyricLine {
 	text: string;
 	/** Styled runs, present only when Genius marked the line up. */
@@ -415,12 +325,8 @@ export interface LyricLine {
 	startTimeMs?: number;
 	/**
 	 * True on the line where a note begins, false on the lines it continues over.
-	 *
 	 * Genius anchors one referent across consecutive lines when a phrase spans
-	 * them, so every line of the span carries the same id while only the first is
-	 * marked as the opener. The note is shown once, from that line, and the
-	 * continuation lines stay annotated so the whole span reads as one region the
-	 * way Genius does.
+	 * them, so every line of the span carries the id while only the first opens.
 	 */
 	noteStart?: boolean;
 	/**
@@ -432,19 +338,17 @@ export interface LyricLine {
 
 const REFERENT_HREF = /href="\/(\d{3,})\//g;
 
-/**
- * Read the annotated lyrics out of a rendered Genius page.
+/*
+ * Genius renders the lyrics more than once: split across containers, plus a
+ * plain-text duplicate, and only the anchored copy carries notes. A long song
+ * arrives as several containers continuing into each other, so every anchored
+ * block is read and concatenated in document order.
  *
- * Genius renders the lyrics more than once: some copies carry the annotation
- * anchors and others are plain-text duplicates, and a long song is split across
- * several containers. Only the blocks carrying anchors are read, and they are
- * concatenated in document order, which is what makes the whole song appear.
- *
- * Containers are located by scanning openings and then balancing div depth
- * rather than by capturing to the next "</div>": the real containers hold
- * anchors inside inline elements, and a naive slice truncates early whenever a
- * nested div appears. Scanning openings also keeps this linear, where one
- * greedy pattern over a full Genius page spent seconds in backtracking.
+ * Containers are found by scanning openings and balancing div depth rather than
+ * capturing to the next "</div>": the real ones hold anchors inside inline
+ * elements, so a naive slice truncates at the first nested div. Scanning also
+ * stays linear, where one greedy pattern over a full page spent seconds
+ * backtracking.
  */
 export const parseLyricLines = (html: string): LyricLine[] => {
 	const openings: number[] = [];
@@ -452,31 +356,17 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 	let open: RegExpExecArray | null;
 	while ((open = openPattern.exec(html)) !== null) openings.push(open.index + open[0].length);
 
-	// Genius splits a long song across several containers rather than one long
-	// one: "Without Me" arrives as 38 + 30 + 34 + 19 lines that continue straight
-	// into each other. Reading only the first container truncated the song at its
-	// first verse, so every annotated block is read and they are concatenated in
-	// document order.
-	//
-	// Only blocks carrying referent anchors are taken, which is what separates the
-	// real lyrics from the contributor header and the plain-text duplicate. The
-	// blocks are not duplicates of each other — verified by hashing their text on
-	// two songs — so nothing is repeated by concatenating them.
 	const lines: LyricLine[] = [];
 
 	// Kept unstripped: the duplicate and the chrome block are both fragments of
 	// another block's header, and stripping removes the text that shows it.
 	const blocks: string[] = [];
 	for (const start of openings) {
-		const end = findContainerEnd(html, start);
-		if (end < 0) continue;
-		blocks.push(html.slice(start, end));
+		const close = findContainerEnd(html, start);
+		if (close < 0) continue;
+		blocks.push(html.slice(start, close));
 	}
 
-	// Genius renders the lyrics twice: once split across containers, once as one
-	// plain-text duplicate. Only the first section has anchors, so filtering on
-	// anchors kept that section and dropped the rest of the song.
-	//
 	// A block whose text sits inside another block's is the copy. Ties go to the
 	// anchored one.
 	const raw = blocks.map((block) => plainText(block));
@@ -497,27 +387,19 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 
 	for (const block of chosen) {
 		const lyricBlock = stripNonLyricMarkup(block);
-		// Split on <br> into display lines and work out which note each belongs to.
-		// Three things make this more than a plain split:
-		//  - an anchor can wrap a break (<i>line one<br/>line two</i>), so a line
-		//    may carry an id opened on an earlier line, or close one;
-		//  - Genius writes an empty line before a section header as <br><br>, so
-		//    the split produces an empty piece that has to be kept;
-		//  - a line can hold several anchors.
+		// Split on <br> into display lines. An anchor can wrap a break, so a line
+		// may carry an id opened earlier or close one; <br><br> leaves an empty
+		// piece that has to be kept; a line can hold several anchors.
 		const pieces = lyricBlock.split(/<br\s*\/?>/i);
 		const owners: string[][] = [];
 		// `openIds` is the anchor currently open across a break, so a line inside a
-		// spanning anchor inherits its id; `spanStarts` records separately whether
-		// this line is where the note opens.
+		// span inherits its id; `spanStarts` records whether this is where it opens.
 		const spanStarts: boolean[] = [];
-		// Referent ids whose <a> is still open, so an anchor wrapping a break keeps
-		// the lines inside it. A count of opens against closes cannot decide this:
-		// an anchor that opens and closes on one line balances to zero and would
-		// leak its id onto every line after it.
+		// The count of opens against closes cannot decide this: an anchor that opens
+		// and closes on one line balances to zero and would leak its id onwards.
 		let openIds: string[] = [];
 		// Emphasis in force when the previous line ended, so a tag wrapping a break
-		// keeps styling the lines inside it. Runs are kept as read, since the carry
-		// cannot be recomputed without replaying the block.
+		// keeps styling the lines inside it.
 		let openEmphasis = new Set<string>();
 		const runsByLine: LyricRun[][] = [];
 
@@ -525,52 +407,37 @@ export const parseLyricLines = (html: string): LyricLine[] => {
 			const { runs, close } = readRuns(raw, openEmphasis);
 			openEmphasis = close;
 			runsByLine.push(runs);
-			// A line carrying an id is where its note opens. Decided by the id alone,
-			// not by whether an anchor is currently open: an anchor opened above a
-			// break only means this line is inside that span, and must not open it.
+			// A line carrying an id is where its note opens. Decided by the id alone:
+			// an anchor opened above a break only means this line is inside that span.
 			const ids = collectReferentIds(raw);
 			spanStarts.push(ids.length > 0);
 			// Every anchor open anywhere in this line, whether opened here or above a
 			// break: the text belongs to all of them.
 			owners.push([...new Set([...openIds, ...ids])]);
 
-			// What is still open at the end of the line decides the next one. The
-			// anchors are walked in document order rather than counted, because the
-			// count cannot tell an anchor that closed on its own line — the common
-			// case — from one wrapping the break, and getting that wrong carried a
-			// note across the rest of the song.
+			// Walked in document order rather than counted: a count cannot tell an
+			// anchor that closed on its own line from one wrapping the break, and
+			// getting that wrong carried a note across the rest of the song.
 			openIds = stillOpen(raw, openIds);
 		}
 
 		for (const [index, raw] of pieces.entries()) {
 			const text = plainText(raw);
 			const runs = trimRuns(runsByLine[index]);
-			// A section header is Genius' own scaffolding, not a lyric, and carries no
-			// annotation of its own. The id seen here belongs to the anchor that opens
-			// after the break, so letting it through would put a note on the header.
 			if (text.length === 0) {
-				// A blank line is Genius' own separator between sections, written as
-				// <br><br>. It is kept as-is, with no test for what follows: every
-				// blank in both sampled songs is followed by a section header, and a
-				// rule that inspected the next line would break on any other wording
-				// Genius uses.
-				//
-				// This also covers the blank that ends each container. A long song is
-				// split across several containers, so that trailing blank belongs to
-				// the header the next container opens with — dropping it is what left
-				// every chorus but the first one jammed against the previous line.
+				// Genius' own separator between sections, written as <br><br>. Kept
+				// without a test for what follows, since a rule reading the next line
+				// would break on any other wording Genius uses. This also covers the
+				// blank that ends each container, which belongs to the header the next
+				// one opens with.
 				lines.push({ text: "", referentIds: [], blank: true });
 				continue;
 			}
 
-			// Every line a spanning anchor covers keeps the id, so the region is
-			// highlighted as one piece the way Genius does. Only the line the anchor
-			// opens on is marked as the start; the rest continue the span.
+			// Every line a span covers keeps the id so the region highlights as one
+			// piece; only the opening line is marked as the start.
 			const owned = owners[index];
 			const isStart = owned.length > 0 && spanStarts[index];
-			// Continuations carry an id they inherited, which is what keeps the span
-			// highlighted as one block of lines rather than as separate notes.
-			// Only carried when something is styled; a plain line keeps just its text.
 			const emphasised = runs.some((run) => run.italic || run.bold);
 			lines.push({
 				text,
@@ -605,24 +472,17 @@ const EMPHASIS_TAGS: Record<string, "italic" | "bold"> = {
 	strong: "bold",
 };
 
-/**
- * Split one line's markup into text runs, keeping italics and bold.
- *
- * Genius marks who sings what with emphasis rather than a separate credit, so
- * stripping the tags made every part of a multi-singer vocal look alike.
- *
- * `open` and `close` are the emphasis in force from the previous line, because a
- * tag can wrap a break, and the run closes where that line ends.
- */
+// Genius marks who sings what with emphasis rather than a separate credit, so
+// stripping the tags made every part of a multi-singer vocal look alike. `open`
+// and `close` carry the emphasis in force across a break.
 const readRuns = (fragment: string, open: Set<string>): { runs: LyricRun[]; close: Set<string> } => {
 	const runs: LyricRun[] = [];
 	const active = new Set(open);
 
 	const push = (raw: string) => {
-		// Non-emphasis tags are stripped too, or the anchor's own <span>/<a>
-		// would be read as words. Asterisks go too: Genius writes emphasis as
-		// literal *text* where the markup would not survive, and those are not
-		// part of the lyric.
+		// Every tag goes, or the anchor's own <span>/<a> would read as words.
+		// Asterisks too: Genius writes emphasis as literal *text* where the markup
+		// would not survive, and those are not part of the lyric.
 		const text = decodeEntities(raw.replace(/<[^>]+>/g, "")).replace(/\*/g, "");
 		if (!text) return;
 		const last = runs[runs.length - 1];
@@ -649,13 +509,8 @@ const readRuns = (fragment: string, open: Set<string>): { runs: LyricRun[]; clos
 
 const EMPHASIS_PATTERN = /<(\/?)(i|em|b|strong)(\s[^>]*)?>/gi;
 
-/**
- * Drop runs holding no words, and fold whitespace-only runs into their neighbour.
- *
- * A break can leave a run holding only the indentation between tags. Joining the
- * runs must still reproduce `text` exactly, since that is what timing and the
- * notes read.
- */
+// Joining the runs must still reproduce `text` exactly, since that is what
+// timing and the notes read.
 const trimRuns = (runs: LyricRun[]): LyricRun[] => {
 	const kept = runs.filter((run) => run.text.trim().length > 0);
 	if (kept.length === 0) return [];
@@ -668,8 +523,8 @@ const trimRuns = (runs: LyricRun[]): LyricRun[] => {
 		if (previous) previous.text += run.text;
 	}
 
-	// Leading and trailing whitespace is the line's own indentation, which `text`
-	// trims away.
+	// Leading and trailing whitespace is the line's own indentation, which
+	// `text` trims away.
 	kept[0].text = kept[0].text.replace(/^\s+/, "");
 	kept[kept.length - 1].text = kept[kept.length - 1].text.replace(/\s+$/, "");
 	return kept;
@@ -689,14 +544,10 @@ const collectReferentIds = (fragment: string): string[] => {
 /** Both ends of a referent anchor, in one pass so they stay in document order. */
 const ANCHOR_EDGE = /<a\b[^>]*href="\/(\d{3,})\/[^"]*"|<\/a>/g;
 
-/**
- * Which referent anchors are still open after this line.
- *
- * An anchor that opens and closes on the same line owns only that line; one that
- * wraps a <br/> keeps the lines inside it. Counting opens against closes gets the
- * first case wrong — it balances to zero, so the id was never dropped and the
- * note carried on to every following line — so the tags are walked instead.
- */
+// An anchor that opens and closes on one line owns only that line; one wrapping a
+// <br/> keeps the lines inside it. Counting opens against closes gets the first
+// case wrong — it balances to zero, so the id was never dropped and the note ran
+// on to every following line — hence walking the tags.
 const stillOpen = (fragment: string, carried: string[]): string[] => {
 	const stack = [...carried];
 	ANCHOR_EDGE.lastIndex = 0;
@@ -706,24 +557,18 @@ const stillOpen = (fragment: string, carried: string[]): string[] => {
 		else stack.pop();
 	}
 	ANCHOR_EDGE.lastIndex = 0;
-	// An id opened and closed on this line can survive as a stray entry only if the
-	// markup nests unexpectedly; keeping the carried ones that are still open is
-	// what the next line needs.
+	// An id opened and closed here survives only if the markup nests unexpectedly.
 	return stack.filter((id, index) => stack.indexOf(id) === index);
 };
 
-/**
- * Cut every data-exclude-from-selection region out of a lyrics block.
+/*
+ * The contributor/translation header and the song blurb sit in the same container
+ * as the lyrics, marked with this attribute — so they go on structure rather than
+ * on line length, which guessed wrong twice: the header became the first "line",
+ * and a genuinely long line lost its whole song.
  *
- * Genius puts the contributor/translation header and the song blurb inside the
- * same container as the lyrics, and marks them with this attribute — so they
- * can be removed on structure instead of guessed at from line lengths. Guessing
- * was tried and failed twice over: the header became the first "line", and a
- * song with a genuinely long line would be discarded whole.
- *
- * The regions nest divs, so the extent is found by balancing depth rather than
- * by taking the first "</div>" — that stopped early and left the blurb behind as
- * a bogus first line.
+ * The regions nest divs, so the extent comes from balancing depth rather than the
+ * first "</div>", which stopped early and left the blurb behind.
  */
 const stripNonLyricMarkup = (block: string): string => {
 	const open = /<div[^>]*data-exclude-from-selection="true"[^>]*>/gi;
@@ -785,28 +630,17 @@ export const parseSpotifyLyrics = (payload: unknown): SpotifyLyrics | null => {
 /** One run of text inside a paragraph, with the links among it preserved. */
 export type NoteSpan = { text: string } | { text: string; href: string };
 
-/**
- * A paragraph inside an annotation, kept apart from the text.
- *
- * Genius' annotations are structured prose — paragraphs, quoted lyric excerpts,
- * embedded images and video links — and flattening them into one string lost
- * that. Rendering needs the blocks, not just a string, so a note carries a
- * `blocks` list alongside the flat `text` kept for length checks and previews.
- */
+// Annotations are structured prose — paragraphs, quoted excerpts, embedded images
+// — and flattening them into one string lost that, so a note carries the blocks
+// alongside the flat text kept for emptiness checks.
 export type NoteBlock =
 	| { kind: "paragraph"; spans: NoteSpan[] }
 	| { kind: "quote"; lines: NoteSpan[][] }
 	| { kind: "image"; src: string };
 
-/**
- * Read one node's worth of prose into spans, keeping links inline.
- *
- * Genius links artists, albums and songs inside sentences, and links outside
- * Genius with the link text as the anchor ("confirmed" pointing at a YouTube
- * clip). Both belong inside the line where they were written — turning them
- * into separate blocks pulled "confirmed" out of "As Trice confirmed" and put it
- * on a line of its own.
- */
+// Links stay inline: Genius links artists and albums inside sentences, and an
+// outbound one carries its text as the anchor ("confirmed" pointing at a clip).
+// Split into separate blocks pulled "confirmed" out of "As Trice confirmed".
 const readSpans = (node: GeniusDomNode | string | undefined | null): NoteSpan[] => {
 	if (node === undefined || node === null) return [];
 	if (typeof node === "string") return node ? [{ text: node }] : [];
@@ -846,14 +680,9 @@ const readSpans = (node: GeniusDomNode | string | undefined | null): NoteSpan[] 
 const spansToText = (spans: NoteSpan[]): string =>
 	spans.map((span) => span.text).join("").replace(/\n+/g, "\n").trim();
 
-/**
- * Read an annotation body into renderable blocks.
- *
- * A bare <a> whose text is itself a link (Genius embeds them that way) becomes a
- * video card; an <img> becomes an image block. Everything else falls back to
- * paragraphs, with <blockquote> kept as a quote so a sampled lyric stays
- * distinguishable from the writer's own commentary.
- */
+// A bare <a> whose text is itself a link (Genius embeds them that way) becomes a
+// video card. <blockquote> stays a quote so a sampled lyric remains
+// distinguishable from the writer's own commentary.
 export const parseNoteBlocks = (node: GeniusDomNode | string | undefined | null): NoteBlock[] => {
 	if (!node || typeof node === "string") {
 		const text = typeof node === "string" ? node.trim() : "";

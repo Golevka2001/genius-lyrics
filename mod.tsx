@@ -16,14 +16,8 @@ import { activeLineIndex, hasTimeline, type LineView } from "./view.ts";
 
 const h = React.createElement;
 
-/**
- * Genius' own vote icon, inline SVG source.
- *
- * The glyph genius.com draws beside a note's vote count, kept as the site draws it
- * rather than as a lookalike: it is a 24-grid drawing of its own, so the viewBox
- * travels with it. Markup rather than a <path> because the wrapper is set through
- * innerHTML.
- */
+// Genius' own glyph beside a note's vote count. It is a 24-grid drawing, so the
+// viewBox travels with it rather than the client's.
 const THUMB_UP =
 	'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" height="16" width="16" fill="currentColor">' +
 	'<path d="M16.52 21.29H6V8.5l.84-.13a3.45 3.45 0 0 0 1.82-1.09 13.16 13.16 0 0 0 .82-1.85c1.06-2.69 2-4.78 3.52-5.31a2.06 2.06 0 0 1 1.74.17c2.5 1.42 1 5 .16 6.95-.11.27-.25.6-.31.77a.78.78 0 0 0 .6.36h4.1a2.29 2.29 0 0 1 2.37 2.37c0 .82-1.59 5.4-2.92 9.09a2.39 2.39 0 0 1-2.22 1.46zm-8.52-2h8.56a.48.48 0 0 0 .31-.17c1.31-3.65 2.73-7.82 2.79-8.44 0-.22-.1-.32-.37-.32h-4.1A2.61 2.61 0 0 1 12.54 8 4.29 4.29 0 0 1 13 6.46c.45-1.06 1.64-3.89.7-4.43-.52 0-1.3 1.4-2.38 4.14a10 10 0 0 1-1.13 2.38A5.28 5.28 0 0 1 8 10.11zM0 8.4h4.86v12.96H0z"/>' +
@@ -42,14 +36,8 @@ const panel = createPanel({
 	warn,
 });
 
-/**
- * Render one run of text, turning links back into links.
- *
- * Genius underlines artists, albums, songs and outbound references inside its
- * prose, and those links carry meaning — "confirmed" pointing at a clip is the
- * evidence for the sentence it sits in. Rendering them as plain text loses the
- * citation, so they come back as anchors with the same destination.
- */
+// Links inside a note carry meaning — "confirmed" pointing at a clip is the
+// evidence for the sentence it sits in — so they come back as anchors.
 const Span = ({ span }: { span: NoteSpan }) => {
 	const href = "href" in span ? span.href : undefined;
 	if (!href) return span.text;
@@ -70,13 +58,7 @@ const SpanLine = ({ spans }: { spans: NoteSpan[] }) =>
 		),
 	);
 
-/**
- * Render an annotation's blocks.
- *
- * Blocks mirror Genius' own structure: paragraphs, quoted lyric excerpts and
- * embedded images. `fallback` covers a note that arrived as flat text with no
- * DOM behind it.
- */
+// `fallback` covers a note that arrived as flat text with no DOM behind it.
 const NoteBody = ({ blocks, fallback }: { blocks: NoteBlock[]; fallback: string }) => {
 	if (blocks.length === 0) {
 		return h("div", { className: "gl-note-text", children: fallback });
@@ -106,8 +88,7 @@ const NoteCard = ({ note }: { note: Annotation }) =>
 	h(
 		"div",
 		{ className: "gl-note" },
-		// Genius shows neither an approval badge nor contributor names on a note,
-		// so the vote count is the only meta rendered.
+		// The vote count is the only meta Genius shows on a note.
 		h(NoteBody, { blocks: note.blocks, fallback: note.text }),
 		note.votes !== undefined
 			? h(
@@ -147,12 +128,12 @@ const Line = ({
 		{
 			className: [
 				"gl-line-wrap",
-				// Hovering any line of a span lights the whole run, so it reads as one
-				// marked region. Driven from the panel rather than CSS: a `:has()` test
-				// on the list would light every annotated line, and a sibling combinator
-				// only reaches the line below.
+				// Hovering any line of a span lights the whole run. Driven from the
+				// panel rather than CSS: a `:has()` test on the list would light
+				// every annotated line, and a sibling combinator reaches only the
+				// line below.
 				view.annotated ? (view.noteStart === false ? " gl-note-cont" : " gl-note-start") : "",
-				// Genius tints a note the artist wrote itself yellow; the rest are alike.
+				// Genius tints an artist-written note yellow; the rest are alike.
 				view.verified ? " gl-note-verified" : "",
 				view.blank ? " gl-blank" : "",
 				hovered && view.annotated ? " gl-note-hover" : "",
@@ -161,12 +142,10 @@ const Line = ({
 				.join(" "),
 			ref: isActive ? activeRef : undefined,
 		},
-		// A div rather than a button: both inherit the page's `user-select: text`, so
-		// the role and tab stop below are what make the row keyboard reachable.
-		//
-		// The pointer handlers sit on the text rather than the row, since Genius marks
-		// the words and a full-width hit area would light up when the cursor is
-		// nowhere near the lyric.
+		// A div rather than a button: both inherit the page's `user-select: text`,
+		// so the role and tab stop below are what make the row keyboard reachable.
+		// The pointer handlers sit on the text, since Genius marks the words and a
+		// full-width hit area would light up with the cursor nowhere near the lyric.
 		h(
 			"div",
 			{
@@ -220,13 +199,8 @@ const Line = ({
 			: null,
 	);
 
-/**
- * The panel's current state, re-rendering this component when it changes.
- *
- * The panel owns the state and the tree only reads it, so a notification has to
- * come back through React: the panel is driven by song changes and by batches of
- * notes arriving, neither of which is a render of this tree.
- */
+// The panel owns the state and the tree only reads it, so a notification has to
+// come back through React: song changes and arriving notes are not renders.
 const usePanel = () => {
 	const [, force] = React.useReducer((count: number) => count + 1, 0);
 
@@ -345,12 +319,8 @@ const Panel = () => {
 	);
 };
 
-/**
- * The page body.
- *
- * Data loads here rather than at module load so opening the page is what triggers
- * a fetch — by then the player is populated and the user has asked for this track.
- */
+// Data loads here rather than at module load, so opening the page is what
+// triggers a fetch — by then the player holds the track the listener asked for.
 const App = () => {
 	const currentTrack = () => client.player.data?.item as TrackItem | undefined;
 
@@ -380,18 +350,14 @@ const App = () => {
 
 const ROUTE = "/genius-lyrics";
 
-/**
- * Entry icon: the Genius mark.
+/*
+ * Genius' own artwork on its 1000-unit grid. stdlib supplies the 16-grid viewBox
+ * and takes only the inner markup, which is why the paths sit in a transform
+ * rather than being rescaled by hand: that would add decimals through 617
+ * characters of path data and change artwork Genius drew. It crops the wide
+ * margin too, so the face fills the icon box.
  *
- * Genius' own artwork, on its 1000-unit grid. stdlib's createIconComponent takes
- * only the inner markup and supplies `viewBox="0 0 16 16"`, which is why the
- * paths are wrapped in a transform rather than rewritten as 16-grid coordinates:
- * scaling the 617 characters of path data by hand would add decimals throughout
- * and change artwork Genius drew. The transform also crops the wide empty
- * margin the source file carries, so the face fills the icon box.
- *
- * No colours are set, matching the other app modules: the client tints nav icons
- * itself and decides the active and inactive states.
+ * No colours: the client tints nav icons and decides the active state.
  */
 const ICON =
 	'<g fill="currentColor" transform="translate(-3.84 -4.66) scale(0.023)"><path d="M264 259h60l18 2 1 10 1 2v55c0 15 0 15-5 22l-5 5a220 220 0 0 0-43 219l1 8-5 4q-7-1-11-5l-2-2q-25-18-45-44l-2-3q-38-54-38-120v-2q0-52 25-98l1-2c9-16 29-51 49-51M510 258h54q5 2 8 6l2 3c18 22 41 60 39 89q-2 4-5 4h-17l-3 1h-6q-2 5-2 9v49a82 82 0 0 1-20 56l-2 3a78 78 0 0 1-56 24q-34 1-58-23a75 75 0 0 1-22-51q0-3 3-5l8-1q31-6 51-30 15-21 15-46v-77l3-9z"/><path d="M740 263c7 1 12 8 16 13l2 3c42 47 68 107 78 169l1 3q8 51-1 102l-1 3q-15 91-73 162l-1 2-24 25-1 1-25 22q-23 19-49 33l-2 1a344 344 0 0 1-323 1l-2-1a328 328 0 0 1-70-50l-3-3q-3-4-2-9l3-3q10 1 20 5a360 360 0 0 0 352-69l2-2 40-41 3-4a357 357 0 0 0 57-345l-1-4-1-3v-9q2-2 5-2"/></g>';

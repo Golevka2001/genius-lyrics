@@ -1,9 +1,6 @@
 /*
- * View model for the lyrics view.
- *
- * Kept apart from the React tree so the interesting part — deciding which
- * annotation is shown for a line, and which line is the active one — can be
- * tested without a renderer. The component in mod.tsx only maps this to DOM.
+ * View model, kept apart from the React tree so the decisions that matter can be
+ * tested without a renderer.
  */
 
 import type { Annotation, LyricLine, LyricRun } from "./logic.ts";
@@ -14,16 +11,16 @@ export interface LineView {
 	text: string;
 	/** Styled runs, when Genius marked the line up. */
 	runs?: LyricRun[];
-	/** Annotations anchored to this line, in page order. */
+	/** In page order. */
 	notes: Annotation[];
-	/** Referent ids anchored to this line, whether or not a note has landed. */
+	/** Anchored here, whether or not a note has landed. */
 	referentIds: string[];
-	/** True when the line carries at least one note, i.e. it is clickable. */
+	/** Carries at least one note, i.e. it is clickable. */
 	annotated: boolean;
 	/**
-	 * True once every referent on this line has been answered, whether or not any
-	 * carried a body. False means the notes are still in flight, and the panel must
-	 * not read the empty note list as "there is nothing here".
+	 * True once every referent here has been answered, whether or not any carried
+	 * a body. False means the notes are in flight, and an empty list must not then
+	 * read as "there is nothing here".
 	 */
 	resolved: boolean;
 	/** True when Genius verified any note on this line, i.e. the artist wrote it. */
@@ -39,14 +36,12 @@ export interface LineView {
 export interface TrackView {
 	title: string;
 	artist: string;
-	/** Lines in display order. */
 	lines: LineView[];
-	/** Number of lines with at least one annotation. */
 	annotatedCount: number;
 	/**
-	 * How many distinct annotations the song carries. Not the annotated line count:
-	 * Genius anchors one note across every line a phrase spans, so one annotation
-	 * can light seven lines.
+	 * Distinct annotations the song carries. Not the annotated line count: Genius
+	 * anchors one note across every line a phrase spans, so one annotation can
+	 * light seven lines.
 	 */
 	annotationCount: number;
 	/** Where the lyrics came from, shown in the footer. */
@@ -68,30 +63,24 @@ export interface BuildInput {
 	settled?: Set<string>;
 }
 
-/**
- * Attach Spotify's timing to Genius' lines.
- *
+/*
  * Genius supplies the text and the anchors; Spotify supplies the clock. They are
- * separate copies of the same song, matched on normalized text and applied once
- * per track, since the notes stream in and rebuild the view several times.
+ * separate copies of the same song, matched on normalized text once per track.
  *
  * The axis is unreliable track-wide: against Bohemian Rhapsody this matched 0 of
- * 24 lines, because Genius merges a line where Spotify splits it per clause and
- * Spotify omits the intro. A line that does match is exact, so callers treat the
- * timing as optional and fall back to plain lyrics.
+ * 24 lines, because Genius merges a line where Spotify splits it per clause. A
+ * line that does match is exact, so callers treat the timing as optional.
  *
- * The alternative, which lyrics-plus uses, is to make Spotify's lyrics the
- * timed body and layer annotations on top; that needs a different structure
- * than "Genius lines with anchors", since the anchors index Genius' own copy.
+ * The alternative, which lyrics-plus uses, is to make Spotify's lyrics the timed
+ * body and layer annotations on top; that needs a different structure, since the
+ * anchors index Genius' own copy.
  */
 export const applyTiming = (lines: LyricLine[], timing?: Array<{ text: string; startTimeMs?: number }>) => {
 	if (!timing || timing.length === 0) return lines;
 
-	// Repeated text is queued rather than deduplicated: a chorus appears several
-	// times with a different offset each time, and the Genius lines are identical
-	// copies of one another, so the only way to pair them is by order of
-	// appearance. Taking the first match for every occurrence pinned the second
-	// chorus to the first one's offset and stalled the highlight there.
+	// Queued rather than deduplicated: a chorus recurs with a different offset
+	// each time and the Genius lines are identical copies, so pairing is by order.
+	// Taking the first match pinned the second chorus to the first one's offset.
 	const queues = new Map<string, number[]>();
 	for (const entry of timing) {
 		if (entry.startTimeMs === undefined) continue;
@@ -120,18 +109,17 @@ export const buildTrackView = ({
 	settled = new Set(),
 }: BuildInput): TrackView => {
 	const views: LineView[] = lines.map((line, index) => {
-		// Every line of a spanning anchor carries the same referent id, so this one
-		// lookup attaches the note and marks the lines that share it at once — which
-		// is what lets hovering any line of a multi-line note light all of it.
+		// Every line of a span carries the same referent id, so this one lookup
+		// attaches the note and marks the lines sharing it, which is what lets
+		// hovering any line of a multi-line note light all of it.
 		const attached = line.referentIds
 			.map((id) => notes.get(id))
 			.filter((note): note is Annotation => Boolean(note?.text));
 		const unique = [...new Map(attached.map((note) => [note.referentId, note])).values()];
 
-		// The page says a line is annotated as soon as it carries an anchor, which is
-		// why a highlight goes up long before the note behind it arrives. So a line
-		// counts as annotated while its referents are outstanding, and stops once
-		// they are all answered and none carried a body.
+		// Annotated as soon as the page carries an anchor, so a highlight goes up
+		// long before the note arrives; it stops once they are all answered and
+		// none carried a body.
 		const resolved = line.referentIds.every((id) => settled.has(id));
 		const annotated = unique.length > 0 || (line.referentIds.length > 0 && !resolved);
 
@@ -177,10 +165,7 @@ export interface PanelState {
 export const INITIAL_STATE: PanelState = { state: "loading", track: null };
 
 /**
- * Index of the line that should be highlighted at a given playback position.
- *
- * Returns -1 when the track has no synced axis, or before the first line
- * starts, so callers can fall back to showing every line plainly.
+ * -1 when the track has no synced axis, or before the first line starts.
  *
  * The last line whose offset has passed wins rather than the next one: with
  * sparse offsets a "next line" rule would leave a gap on screen between the two.
