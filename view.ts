@@ -53,7 +53,7 @@ export interface TrackView {
 export interface BuildInput {
 	title: string;
 	artist: string;
-	/** Genius lines with their anchors; the primary source. */
+	/** Genius lines with their anchors, already carrying Spotify's timing. */
 	lines?: LyricLine[];
 	/** Annotations keyed by referent id. */
 	notes?: Map<string, Annotation>;
@@ -63,8 +63,6 @@ export interface BuildInput {
 	 * instead of waiting for the whole song's worth of them.
 	 */
 	settled?: Set<string>;
-	/** Spotify's timing axis, matched onto the Genius lines by text. */
-	timing?: Array<{ text: string; startTimeMs?: number }>;
 	/** Set when Genius had the song but reported no annotations. */
 	annotationless?: boolean;
 }
@@ -74,6 +72,10 @@ export interface BuildInput {
  *
  * Genius supplies the text and the anchors; Spotify supplies the clock. They
  * are separate copies of the same song and are matched on normalized text.
+ *
+ * Applied once per track rather than per repaint: the notes stream in behind the
+ * first paint and rebuild the view several times, and this walks both sides of
+ * the match. Its result does not change between those rebuilds.
  *
  * Measured against Bohemian Rhapsody this matched 0 of 24 lines, because Genius
  * merges a line where Spotify splits it per clause and Spotify omits the
@@ -123,15 +125,12 @@ export const buildTrackView = ({
 	lines = [],
 	notes = new Map(),
 	settled = new Set(),
-	timing,
 	annotationless,
 }: BuildInput): TrackView => {
-	const timed = applyTiming(lines, timing);
-
 	// Every line of a spanning anchor carries the same referent id, so this one
 	// lookup attaches the note and marks the lines that share it at once — which
 	// is what lets hovering any line of a multi-line note light all of it.
-	const views: LineView[] = timed.map((line, index) => {
+	const views: LineView[] = lines.map((line, index) => {
 		const attached = line.referentIds
 			.map((id) => notes.get(id))
 			.filter((note): note is Annotation => Boolean(note?.text));

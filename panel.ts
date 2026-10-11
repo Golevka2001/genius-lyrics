@@ -9,7 +9,7 @@
  */
 
 import type { Annotation, GeniusSong, LyricLine, SongHit, SpotifyLyrics } from "./logic.ts";
-import { buildTrackView, type PanelState } from "./view.ts";
+import { applyTiming, buildTrackView, type PanelState } from "./view.ts";
 import type { AnnotationBatch } from "./genius.ts";
 
 export interface TrackItem {
@@ -120,6 +120,11 @@ export function createPanel(transport: Transport): Panel {
 			const timing = await transport.fetchSpotifyLyrics(key).catch(() => null);
 			if (mine !== generation) return;
 
+			// Matched onto Genius' lines once, here: the view is rebuilt for every
+			// batch of notes that lands, and this walks both sides of the match each
+			// time for a result that cannot change.
+			const timed = applyTiming(lines, timing ?? undefined);
+
 			// The lyrics and every anchor are known at this point, which is enough to
 			// read the song. Holding the panel on "loading" until all fifty notes had
 			// arrived meant a popular track sat blank for the length of the whole
@@ -129,7 +134,7 @@ export function createPanel(transport: Transport): Panel {
 			const paint = () => {
 				setState({
 					state: "ready",
-					track: buildTrackView({ title, artist, lines, notes, settled, timing, annotationless }),
+					track: buildTrackView({ title, artist, lines: timed, notes, settled, annotationless }),
 				});
 			};
 

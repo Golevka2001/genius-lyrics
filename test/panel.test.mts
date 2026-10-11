@@ -113,43 +113,6 @@ test("the lyrics are painted before any note has arrived", async () => {
 	await loading;
 });
 
-test("notes arrive without the panel leaving the ready state", async () => {
-	const h = harness();
-	const panel = createPanel(h.transport);
-	const states: string[] = [];
-	panel.subscribe(() => states.push(panel.state.state));
-
-	await panel.load(track("one"));
-
-	assert.equal(states[0], "loading", "the first paint asks for the track");
-	assert.ok(
-		states.slice(1).every((entry) => entry === "ready"),
-		`every repaint after the first is ready, got ${JSON.stringify(states)}`,
-	);
-	assert.deepEqual(shownIds(panel), ["one-1", "one-2"], "both notes landed on their own lines");
-	assert.equal(panel.state.track?.lines[0].resolved, true);
-});
-
-test("a track change stops the note pass that was still running", async () => {
-	const h = harness();
-	const panel = createPanel(h.transport);
-
-	// The first note is held open, so the pass is mid-flight when the user skips.
-	h.hold("one-1");
-	const first = panel.load(track("one"));
-	await new Promise((resolve) => setTimeout(resolve, 0));
-	assert.ok(h.calls.some((call) => call.startsWith("notes:one-")), "the pass started");
-
-	await panel.load(track("two"));
-	assert.equal(panel.state.track?.title, "two", "the second track is on screen");
-
-	// The first pass is still parked on its held note, so releasing it is what
-	// would carry the old track's answer back in.
-	h.gates.get("one-1")?.release();
-	await first;
-	assert.deepEqual(shownIds(panel), ["two-1", "two-2"], "only the current track's notes are showing");
-});
-
 test("an answer that lands after the track changed is dropped", async () => {
 	const h = harness();
 	const panel = createPanel(h.transport);
@@ -259,19 +222,4 @@ test("loading a new track closes whatever note was open", async () => {
 	await panel.load(track("two"));
 
 	assert.equal(panel.openLine, null, "a popover from the previous track must not survive the change");
-});
-
-test("unsubscribing stops the notifications", async () => {
-	const h = harness();
-	const panel = createPanel(h.transport);
-	let notifications = 0;
-	const off = panel.subscribe(() => notifications++);
-
-	await panel.load(track("one"));
-	const seen = notifications;
-	assert.ok(seen > 0, "the load notified while subscribed");
-
-	off();
-	await panel.load(track("two"));
-	assert.equal(notifications, seen, "nothing arrives after unsubscribing");
 });

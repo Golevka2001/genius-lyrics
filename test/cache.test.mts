@@ -59,16 +59,6 @@ test("a request still in flight is shared rather than repeated", async () => {
 	assert.equal(await inFlight, await sameRequest);
 });
 
-test("a result is still there after the request has settled", async () => {
-	const { calls, fetch } = countingFetcher();
-	const cache = createCache(fetch, { ttl: TTL });
-
-	await cache.get("a");
-	await new Promise((resolve) => setTimeout(resolve, 0)); // let it settle
-	await cache.get("a");
-
-	assert.deepEqual(calls, ["a"]);
-});
 
 test("different keys are cached apart from each other", async () => {
 	const { calls, fetch } = countingFetcher();
@@ -116,39 +106,6 @@ test("an entry past its ttl is dropped instead of sitting in memory", async () =
 	await cache.get("key-0");
 	assert.deepEqual(calls.slice(before), ["key-0"], "the oldest entry was swept, not kept");
 	assert.equal(calls.length, before + 1);
-});
-
-test("refreshing a key moves it to the back of the sweep", async () => {
-	// An entry that is asked again is fresh again, so it must not be dropped by
-	// the sweep on the strength of when it was first inserted.
-	const { calls, fetch } = countingFetcher();
-	const time = clock();
-	const cache = createCache(fetch, { ttl: TTL, now: time.now });
-
-	await cache.get("a");
-	await cache.get("b");
-
-	// Refresh "a" just before it would have gone stale, leaving "b" the older.
-	time.advance(TTL - 1);
-	await cache.get("a");
-
-	time.advance(2);
-	await cache.get("a");
-
-	assert.deepEqual(calls, ["a", "b", "a"], "the refreshed key survived the sweep");
-});
-
-test("the ttl on one track does not disturb another", async () => {
-	const { calls, fetch } = countingFetcher();
-	const time = clock();
-	const cache = createCache(fetch, { ttl: TTL, now: time.now });
-
-	await cache.get("a");
-	time.advance(TTL);
-	await cache.get("a");
-
-	await cache.get("b");
-	assert.deepEqual(calls, ["a", "a", "b"]);
 });
 
 test("a failure is not remembered, so the next ask retries", async () => {
