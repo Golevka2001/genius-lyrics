@@ -20,7 +20,8 @@ export interface TrackItem {
 
 export interface Transport {
 	searchSong(title: string, artist: string): Promise<SongHit[]>;
-	fetchSong(id: number): Promise<GeniusSong | null>;
+	/** Song metadata for the original of the track's translation group. */
+	fetchOriginalSong(id: number): Promise<GeniusSong | null>;
 	fetchLyrics(songUrl: string): Promise<LyricLine[]>;
 	fetchSpotifyLyrics(trackUri: string): Promise<SpotifyLyrics | null>;
 	fetchAnnotations(referentIds: string[], options: { signal?: AbortSignal; onBatch?: (b: AnnotationBatch) => void }): Promise<AnnotationBatch>;
@@ -112,7 +113,13 @@ export function createPanel(transport: Transport): Panel {
 				return;
 			}
 
-			const [song, lines] = await Promise.all([transport.fetchSong(hit.id), transport.fetchLyrics(hit.url)]);
+			// The song first, because the page to read is the original's rather than
+			// whichever hit search ranked first: a translation carries its own
+			// lyrics, and notes about that language's wording.
+			const song = await transport.fetchOriginalSong(hit.id);
+			if (mine !== generation) return;
+
+			const lines = await transport.fetchLyrics(song?.url || hit.url);
 			if (mine !== generation) return;
 
 			if (lines.length === 0) {

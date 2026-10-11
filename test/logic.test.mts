@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
 	parseNoteBlocks,
 	domToText,
+	isOriginalSong,
 	parseLyricLines,
 	parseReferent,
 	parseSearchResults,
@@ -78,7 +79,6 @@ test("parseSearchResults returns typed candidates", () => {
 	assert.equal(hits[0].id, 109096);
 	assert.equal(hits[0].artist, "Radiohead");
 	assert.equal(hits[0].annotationCount, 33);
-	assert.equal(hits[0].translation, false);
 });
 
 test("parseReferent prefers the referent's own annotation", () => {
@@ -220,22 +220,41 @@ test("parseSearchResults throws when Genius refused the request", () => {
 
 test("pickHit prefers the hit whose title and artist match the track", () => {
 	const hits = [
-		{ id: 1, title: "IN THE RAIN", url: "u1", artist: "Xscape", annotationCount: 40, translation: false },
-		{ id: 2, title: "IN THE RAIN", url: "u2", artist: "XG", annotationCount: 0, translation: false },
+		{ id: 1, title: "IN THE RAIN", url: "u1", artist: "Xscape", annotationCount: 40 },
+		{ id: 2, title: "IN THE RAIN", url: "u2", artist: "XG", annotationCount: 0 },
 	];
 	assert.equal(pickHit(hits, "IN THE RAIN", "XG")?.id, 2);
 	assert.equal(pickHit(hits, "IN THE RAIN", "Xscape")?.id, 1);
 });
 
 test("pickHit ignores a trailing decoration on either title", () => {
-	const hits = [{ id: 7, title: "In The Rain (Remastered)", url: "u", artist: "XG", annotationCount: 0, translation: false }];
+	const hits = [{ id: 7, title: "In The Rain (Remastered)", url: "u", artist: "XG", annotationCount: 0 }];
 	assert.equal(pickHit(hits, "IN THE RAIN", "XG")?.id, 7);
+});
+
+test("pickHit prefers the exact artist over one that only contains it", () => {
+	// "Radiohead (Cover Band)" contains "Radiohead", so scoring the two alike left
+	// the tie to Genius' order, which put the cover in place of the song played.
+	const hits = [
+		{ id: 1, title: "Creep", url: "u1", artist: "Radiohead (Cover Band)", annotationCount: 9 },
+		{ id: 2, title: "Creep", url: "u2", artist: "Radiohead", annotationCount: 0 },
+	];
+	assert.equal(pickHit(hits, "Creep", "Radiohead")?.id, 2);
+});
+
+test("pickHit still matches an artist listed alongside others", () => {
+	// Genius joins several names, so containment is what recognises them.
+	const hits = [
+		{ id: 1, title: "Despacito", url: "u1", artist: "Someone Else", annotationCount: 0 },
+		{ id: 2, title: "Despacito", url: "u2", artist: "Luis Fonsi & Daddy Yankee (Ft. Justin Bieber)", annotationCount: 0 },
+	];
+	assert.equal(pickHit(hits, "Despacito", "Luis Fonsi, Daddy Yankee")?.id, 2);
 });
 
 test("pickHit falls back to Genius' order when nothing matches", () => {
 	const hits = [
-		{ id: 3, title: "Totally Different", url: "u3", artist: "Someone", annotationCount: 9, translation: false },
-		{ id: 4, title: "Also Different", url: "u4", artist: "Nobody", annotationCount: 1, translation: false },
+		{ id: 3, title: "Totally Different", url: "u3", artist: "Someone", annotationCount: 9 },
+		{ id: 4, title: "Also Different", url: "u4", artist: "Nobody", annotationCount: 1 },
 	];
 	assert.equal(pickHit(hits, "IN THE RAIN", "XG")?.id, 3);
 	assert.equal(pickHit([], "IN THE RAIN", "XG"), null);
@@ -547,17 +566,17 @@ test("parseReferent reads the body out of a dom with links", () => {
 	assert.match(annotation.text, /Obie Trice was one of Eminem’s protégés under Shady Records\./);
 });
 
-test("parseSearchResults prefers an annotated original over translations", () => {
-	// Genius returned six Polish/Turkish translations before the English
-	// original for "Rihanna Genius", so taking the first hit showed a translated
-	// text whose annotations talk about a different language's wording.
+test("parseSearchResults puts an annotated entry ahead of an unannotated one", () => {
+	// Which language a page is in is not decided here: search mixes originals
+	// with community translations, and the original is resolved afterwards
+	// through translation_songs. Having notes is what this ranking can know.
 	const payload = {
 		response: {
 			sections: [
 				{
 					hits: [
-						{ result: { id: 1, title: "S&M", full_title: "Rihanna - S&M (polskie tłumaczenie) by Polskie tłumaczenia Genius", url: "u1", artist_names: "Polskie tłumaczenia Genius", annotation_count: 3 } },
-						{ result: { id: 2, title: "Genius", full_title: "Genius by Rihanna", url: "u2", artist_names: "Rihanna", annotation_count: 12 } },
+						{ result: { id: 1, title: "Rehab", full_title: "Rehab by Rihanna", url: "u1", artist_names: "Rihanna", annotation_count: 0 } },
+						{ result: { id: 2, title: "Rehab", full_title: "Rehab by Someone Else", url: "u2", artist_names: "Someone Else", annotation_count: 5 } },
 					],
 				},
 			],
@@ -565,27 +584,8 @@ test("parseSearchResults prefers an annotated original over translations", () =>
 	};
 
 	const hits = parseSearchResults(payload);
-	assert.equal(hits[0].id, 2, "the annotated original must come first");
-	assert.equal(hits[0].translation, false);
-	assert.equal(hits[0].annotationCount, 12);
-	assert.equal(hits[1].translation, true);
-});
-
-test("parseSearchResults ranks an unannotated original above a translation", () => {
-	const payload = {
-		response: {
-			sections: [
-				{
-					hits: [
-						{ result: { id: 10, title: "Rehab", full_title: "Rihanna - Rehab (türkçe çeviri) by Genius Türkçe Çeviriler", url: "u", artist_names: "Genius Türkçe Çeviriler", annotation_count: 5 } },
-						{ result: { id: 11, title: "Rehab", full_title: "Rehab by Rihanna", url: "u", artist_names: "Rihanna", annotation_count: 0 } },
-					],
-				},
-			],
-		},
-	};
-	const hits = parseSearchResults(payload);
-	assert.equal(hits[0].id, 11, "the original is still the right text even without notes");
+	assert.equal(hits[0].id, 2);
+	assert.equal(hits[0].annotationCount, 5);
 });
 
 test("parseSearchResults keeps Genius' order inside a tier", () => {
@@ -607,7 +607,38 @@ test("parseSearchResults keeps Genius' order inside a tier", () => {
 test("parseSearchResults defaults the new fields on sparse rows", () => {
 	const hits = parseSearchResults({ response: { sections: [{ hits: [{ result: { id: 5, title: "t", url: "u", artist_names: "a" } }] }] } });
 	assert.equal(hits[0].annotationCount, 0);
-	assert.equal(hits[0].translation, false);
+});
+
+test("isOriginalSong tells an original from a translation", () => {
+	// Genius lists a translation among its own siblings and leaves the original
+	// out, which is how a Swedish page of Despacito is told apart from the
+	// Spanish one without reading either title.
+	const original = parseSong({ response: { song: { id: 3057010, translation_songs: [{ id: 3083456 }, { id: 3067667 }] } } });
+	const swedish = parseSong({ response: { song: { id: 3083456, translation_songs: [{ id: 3057010 }, { id: 3083456 }] } } });
+
+	assert.ok(original);
+	assert.ok(swedish);
+	assert.equal(isOriginalSong(original), true);
+	assert.equal(isOriginalSong(swedish), false);
+});
+
+test("isOriginalSong accepts a song nothing has translated", () => {
+	// A cover and a song with no translations both carry an empty list, so they
+	// stay put rather than being sent off to the song they were recorded from.
+	const cover = parseSong({ response: { song: { id: 5287644, translation_songs: [] } } });
+	const sparse = parseSong({ response: { song: { id: 13768860 } } });
+
+	assert.ok(cover);
+	assert.ok(sparse);
+	assert.equal(isOriginalSong(cover), true);
+	assert.equal(isOriginalSong(sparse), true);
+});
+
+test("parseSong reads the translation group, ignoring entries without an id", () => {
+	const song = parseSong({
+		response: { song: { id: 3083456, translation_songs: [{ id: 3057010 }, { title: "no id" }, { id: "not a number" }] } },
+	});
+	assert.deepEqual(song?.translationIds, [3057010]);
 });
 
 test("parseNoteBlocks keeps paragraphs, quotes and images apart", () => {

@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { createPanel, type TrackItem, type Transport } from "../panel.ts";
 import type { Annotation, GeniusSong, LyricLine, SongHit } from "../logic.ts";
 
-const hit: SongHit = { id: 1, title: "Creep", url: "https://genius.com/x", artist: "Radiohead", annotationCount: 1, translation: false };
+const hit: SongHit = { id: 1, title: "Creep", url: "https://genius.com/x", artist: "Radiohead", annotationCount: 1 };
 
 const lyricLine = (text: string, referentIds: string[] = []): LyricLine => ({ text, referentIds });
 
@@ -22,7 +22,7 @@ const note = (id: string): Annotation => ({
 	authors: [],
 });
 
-const song: GeniusSong = { id: 1, title: "Creep", url: "https://genius.com/x", annotationCount: 1, description: "" };
+const song: GeniusSong = { id: 1, title: "Creep", url: "https://genius.com/x", annotationCount: 1, translationIds: [], description: "" };
 
 // A transport that records what it was asked and answers from a table of
 // per-key promises, so a test can hold a request open and release it later.
@@ -32,6 +32,8 @@ const song: GeniusSong = { id: 1, title: "Creep", url: "https://genius.com/x", a
 function harness(overrides: Partial<Transport> = {}) {
 	const calls: string[] = [];
 	const gates = new Map<string, { promise: Promise<void>; release: () => void }>();
+	/** The track the last search was for, which the song answer echoes back. */
+	let current = "";
 
 	/** Leaves `id` unanswered until `release()` is called on it. */
 	const hold = (id: string) => {
@@ -45,11 +47,15 @@ function harness(overrides: Partial<Transport> = {}) {
 	const transport: Transport = {
 		searchSong: async (title) => {
 			calls.push(`search:${title}`);
+			current = title;
 			return [{ ...hit, title, url: `https://genius.com/${title}` }];
 		},
-		fetchSong: async () => {
+		fetchOriginalSong: async (id) => {
 			calls.push("song");
-			return song;
+			// The page the panel reads comes from here rather than from the search
+			// hit, so the answer carries the track's own url: the referents below are
+			// named after it, and two tracks sharing one would hide a stale repaint.
+			return { ...song, id, title: current, url: `https://genius.com/${current}` };
 		},
 		fetchLyrics: async (songUrl) => {
 			calls.push(`lyrics:${songUrl}`);
@@ -270,18 +276,21 @@ test("unsynced Spotify lyrics leave the lines untimed", async () => {
 
 test("the chosen hit is the one matching title and artist, not the first", async () => {
 	const other = { ...hit, id: 2, title: "Creep", artist: "Radiohead (Cover Band)" };
+	// The page read is the resolved song's, so answering per id is what records
+	// which of the two hits was chosen.
 	const h = harness({
 		searchSong: async () => [other, hit],
+		fetchOriginalSong: async (id) => ({ ...song, id, url: `https://genius.com/${id}` }),
 	});
 	const panel = createPanel(h.transport);
 
 	await panel.load(track("Creep"));
 
-	assert.ok(h.calls.includes("song"), "the song should have been fetched");
 	assert.ok(
-		h.calls.some((call) => call === "lyrics:https://genius.com/x"),
+		h.calls.includes(`lyrics:https://genius.com/${hit.id}`),
 		`expected the matching hit's page, got ${JSON.stringify(h.calls)}`,
 	);
+	assert.ok(!h.calls.includes(`lyrics:https://genius.com/${other.id}`), "the cover band's page was read");
 });
 
 test("a page with no readable lyrics keeps the track's name for the message", async () => {

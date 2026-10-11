@@ -18,7 +18,7 @@
 
 import { client, warn } from "/modules/stdlib/mod.ts";
 import { createCache } from "./cache.ts";
-import { cleanTitleText, parseReferent, parseSearchResults, parseSong, throwIfGeniusRefused, type Annotation, type GeniusSong, type LyricLine, type SongHit, type SpotifyLyrics } from "./logic.ts";
+import { cleanTitleText, isOriginalSong, parseReferent, parseSearchResults, parseSong, throwIfGeniusRefused, type Annotation, type GeniusSong, type LyricLine, type SongHit, type SpotifyLyrics } from "./logic.ts";
 import { parseLyricLines } from "./logic.ts";
 
 const ORIGIN = "https://genius.com";
@@ -57,10 +57,9 @@ export const buildQueries = (title: string, artist: string): string[] => {
 
 /** One search page, keyed by the query string it was asked for. */
 const searchPage = createCache(async (query: string): Promise<SongHit[]> => {
-	// A wide page on purpose: Genius ranks community translations above the
-	// original for many tracks — "Genius Rihanna" returns 20 translations and no
-	// original at all, at any page size — so the original has to be present in
-	// the window for the ranking in parseSearchResults to find it.
+	// A wide page on purpose: Genius mixes community translations into the result
+	// list and ranks them alongside originals, so a narrow one can return nothing
+	// but translations of the track.
 	const perPage = "30";
 	const url = `${ORIGIN}/api/search/song?${new URLSearchParams({ per_page: perPage, q: query })}`;
 	const body = (await client.cosmos.get(url)) as { response?: unknown; code?: number };
@@ -96,6 +95,26 @@ const songCache = createCache(async (id: number): Promise<GeniusSong | null> => 
 
 /** Fetch song metadata: title, url and the community annotation count. */
 export const fetchSong = (id: number): Promise<GeniusSong | null> => songCache.get(id);
+
+/**
+ * Fetch the song metadata of the track's original, following its translations.
+ *
+ * Search mixes originals with community translations in one list and ranks them
+ * together, so "Luis Fonsi, Daddy Yankee Despacito" returned 19 translations and
+ * neither original, and the page picked from it carries no annotation anchors at
+ * all. Costs one extra request, and only when the hit is a translation.
+ */
+export const fetchOriginalSong = async (id: number): Promise<GeniusSong | null> => {
+	const song = await fetchSong(id);
+	if (!song || isOriginalSong(song)) return song;
+
+	for (const siblingId of song.translationIds) {
+		const sibling = await fetchSong(siblingId);
+		if (sibling && isOriginalSong(sibling)) return sibling;
+	}
+	// Nothing answered: the page itself still carries lyrics and anchors.
+	return song;
+};
 
 /**
  * Fetch the rendered lyrics page, which is the only place the lyrics and their

@@ -9,7 +9,7 @@
 
 import type { ModuleRuntimeContext } from "/modules/stdlib/mod.ts";
 import { NavLink, Platform, PlaybarButton, React, client, createRegistrar, warn } from "/modules/stdlib/mod.ts";
-import { detectFailure, fetchAnnotations, fetchLyrics, fetchSong, fetchSpotifyLyrics, searchSong } from "./genius.ts";
+import { detectFailure, fetchAnnotations, fetchLyrics, fetchOriginalSong, fetchSpotifyLyrics, searchSong } from "./genius.ts";
 import type { Annotation, NoteBlock, NoteSpan } from "./logic.ts";
 import { createPanel, type TrackItem } from "./panel.ts";
 import { activeLineIndex, hasTimeline, type LineView } from "./view.ts";
@@ -37,7 +37,7 @@ let activeRef: { current: HTMLElement | null } | { current: null } = { current: 
 
 const panel = createPanel({
 	searchSong,
-	fetchSong,
+	fetchOriginalSong,
 	fetchLyrics,
 	fetchSpotifyLyrics,
 	fetchAnnotations,

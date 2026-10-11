@@ -208,41 +208,8 @@ export interface SongHit {
 	artist: string;
 	/** Community annotations on Genius; the closest thing to a "real song" signal. */
 	annotationCount: number;
-	/** True when Genius marks this entry as a translation of another song. */
-	translation: boolean;
 }
 
-/**
- * Recognise a translation from its title.
- *
- * Genius writes these in many languages and the marker lands in different
- * places: "(polskie tłumaczenie)", "(türkçe çeviri)", "(Deutsche Übersetzung)",
- * "(transcription)" — and sometimes only in the artist field, as in
- * "by Genius Türkçe Çeviriler". The giveaway is a parenthesised phrase naming a
- * language or translation, or an artist/URL that says so.
- */
-const TRANSLATION_WORDS =
-	/translat|tłumaczen|übersetz|bersetz|ceviri|çeviri|tradu|traduc|versi[oó]n|tradu[cç]|\bcevir|\btranscri/i;
-
-const isTranslationTitle = (title: string): boolean =>
-	/\([^)]*\)/.test(title) && TRANSLATION_WORDS.test(title);
-
-const mentionsTranslation = (value: string): boolean =>
-	TRANSLATION_WORDS.test(value) && /\b(?:translations?|tłumaczenia|übersetzungen|traducciones|ceviriler|çeviriler)\b/i.test(value);
-
-/**
- * Pull the candidate songs out of /api/search/song, best match first.
- *
- * Genius mixes original songs with community translations in one result list,
- * and the translations often outrank the original: searching "Rihanna Genius"
- * returned six Polish and Turkish translations before the English original. A
- * translation carries its own annotations, so taking the first hit would show a
- * translated text whose notes are about a different language's wording.
- *
- * Ranking therefore puts annotated originals ahead of everything else, keeps
- * unannotated originals ahead of translations, and only uses Genius' own order
- * to break ties.
- */
 /**
  * Turn a refused Genius response into an error instead of an empty result.
  *
@@ -259,6 +226,14 @@ export const throwIfGeniusRefused = (payload: unknown): void => {
 	);
 };
 
+/**
+ * Pull the candidate songs out of /api/search/song, best match first.
+ *
+ * Genius mixes originals with community translations in one result list and
+ * ranks them together, so which language a hit is in is not decided here: the
+ * text is resolved afterwards through translation_songs. What ranking can know
+ * is whether an entry carries notes.
+ */
 export const parseSearchResults = (payload: unknown): SongHit[] => {
 	// A refused request has no sections, which would read as "matched nothing".
 	throwIfGeniusRefused(payload);
@@ -273,17 +248,7 @@ export const parseSearchResults = (payload: unknown): SongHit[] => {
 			const result = hit.result as Record<string, unknown> | undefined;
 			if (!result || typeof result.id !== "number") continue;
 
-			const fullTitle = typeof result.full_title === "string" ? result.full_title : "";
 			const title = typeof result.title === "string" ? result.title : "";
-			// full_title reads "Rihanna - S&M (polskie tłumaczenie) by Polskie tłumaczenia
-			// Genius", so the translation marker sits outside `title` alone.
-			const translation =
-				typeof result.translation_url === "string" ||
-				isTranslationTitle(title) ||
-				isTranslationTitle(fullTitle) ||
-				mentionsTranslation(String(result.artist_names ?? "")) ||
-				TRANSLATION_WORDS.test(fullTitle.split(" by ")[1] ?? "");
-
 			hits.push({
 				id: result.id,
 				title,
@@ -295,17 +260,13 @@ export const parseSearchResults = (payload: unknown): SongHit[] => {
 							? result.primary_artist_name
 							: "",
 				annotationCount: typeof result.annotation_count === "number" ? result.annotation_count : 0,
-				translation,
 			});
 		}
 	}
 
-	// Being the original text matters more than having notes: a translation's
-	// annotations explain that language's wording, which is not what a listener
-	// playing the original asked for. Annotation count only breaks ties within
-	// the same kind of entry. The sort is stable so Genius' relevance ordering
-	// survives inside a tier.
-	const rank = (hit: SongHit) => (hit.translation ? 2 : 1) * 2 - (hit.annotationCount > 0 ? 1 : 0);
+	// Annotated entries first, Genius' order breaking ties. Which language a page
+	// is in is settled afterwards, through translation_songs.
+	const rank = (hit: SongHit) => (hit.annotationCount > 0 ? 1 : 2);
 	return hits
 		.map((hit, index) => ({ hit, index }))
 		.sort((a, b) => rank(a.hit) - rank(b.hit) || a.index - b.index)
@@ -331,7 +292,14 @@ export const pickHit = (hits: SongHit[], title: string, artist: string): SongHit
 			else if (hitTitle.includes(wanted) || wanted.includes(hitTitle)) value += 2;
 		}
 		// Genius lists several names joined, so containment on the normalized form.
-		if (wantedArtist && normalize(hit.artist).includes(wantedArtist)) value += 2;
+		// Exact equality still wins over it: "Radiohead (Cover Band)" contains
+		// "Radiohead", and scoring both alike left the tie to Genius' order, which
+		// is how a cover took the place of the song being played.
+		const hitArtist = normalize(hit.artist);
+		if (wantedArtist && hitArtist) {
+			if (hitArtist === wantedArtist) value += 3;
+			else if (hitArtist.includes(wantedArtist)) value += 2;
+		}
 		return value;
 	};
 
@@ -354,6 +322,11 @@ export interface GeniusSong {
 	url: string;
 	annotationCount: number;
 	/**
+	 * Ids of the pages Genius groups with this one as translations of each other,
+	 * this page included. Empty for a song nothing has been translated into.
+	 */
+	translationIds: number[];
+	/**
 	 * Genius' editorial notes about the song, not the lyrics.
 	 *
 	 * description.dom is prose ("According to Thom Yorke, ..."), so it is
@@ -362,6 +335,18 @@ export interface GeniusSong {
 	 */
 	description: string;
 }
+
+/**
+ * Whether a page is the original of its translation group.
+ *
+ * Genius lists a translation among its own siblings but leaves the original out,
+ * so the one page absent from the list is the one a listener on Genius is shown
+ * by default. This is the site's own grouping rather than a guess from the
+ * title, whose markers are per language: "Svensk Översättning", "歌詞和訳" and
+ * "Përkthim në Shqip" all read as original text by any word match. Each group
+ * checked held exactly one page missing from its own list.
+ */
+export const isOriginalSong = (song: GeniusSong): boolean => !song.translationIds.includes(song.id);
 
 /**
  * Read the song payload.
@@ -382,6 +367,9 @@ export const parseSong = (payload: unknown): GeniusSong | null => {
 		title: typeof song.title === "string" ? song.title : "",
 		url: typeof song.url === "string" ? song.url : "",
 		annotationCount: typeof song.annotation_count === "number" ? song.annotation_count : 0,
+		translationIds: ((song.translation_songs ?? []) as Array<Record<string, unknown>>)
+			.map((entry) => entry.id)
+			.filter((id): id is number => typeof id === "number"),
 		description: domToText(description?.dom),
 	};
 };
