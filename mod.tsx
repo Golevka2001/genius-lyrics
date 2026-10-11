@@ -11,7 +11,8 @@ import type { ModuleRuntimeContext } from "/modules/stdlib/mod.ts";
 import { NavLink, Platform, PlaybarButton, React, client, createRegistrar, warn } from "/modules/stdlib/mod.ts";
 import { detectFailure, fetchAnnotations, fetchLyrics, fetchSong, fetchSpotifyLyrics, searchSong } from "./genius.ts";
 import type { Annotation, NoteBlock, NoteSpan } from "./logic.ts";
-import { activeLineIndex, buildTrackView, hasTimeline, type LineView, type PanelState } from "./view.ts";
+import { createPanel, type TrackItem } from "./panel.ts";
+import { activeLineIndex, hasTimeline, type LineView } from "./view.ts";
 
 const h = React.createElement;
 
@@ -28,128 +29,21 @@ const THUMB_UP =
 	'<path d="M16.52 21.29H6V8.5l.84-.13a3.45 3.45 0 0 0 1.82-1.09 13.16 13.16 0 0 0 .82-1.85c1.06-2.69 2-4.78 3.52-5.31a2.06 2.06 0 0 1 1.74.17c2.5 1.42 1 5 .16 6.95-.11.27-.25.6-.31.77a.78.78 0 0 0 .6.36h4.1a2.29 2.29 0 0 1 2.37 2.37c0 .82-1.59 5.4-2.92 9.09a2.39 2.39 0 0 1-2.22 1.46zm-8.52-2h8.56a.48.48 0 0 0 .31-.17c1.31-3.65 2.73-7.82 2.79-8.44 0-.22-.1-.32-.37-.32h-4.1A2.61 2.61 0 0 1 12.54 8 4.29 4.29 0 0 1 13 6.46c.45-1.06 1.64-3.89.7-4.43-.52 0-1.3 1.4-2.38 4.14a10 10 0 0 1-1.13 2.38A5.28 5.28 0 0 1 8 10.11zM0 8.4h4.86v12.96H0z"/>' +
 	"</svg>";
 
-interface TrackItem {
-	name?: string;
-	uri?: string;
-	artists?: Array<{ name?: string }>;
-}
-
-/** Which line's notes are open, or null when the panel shows plain lyrics. */
-let openLine: number | null = null;
-
-/**
- * Referent ids of the note under the pointer, or null.
- *
- * A note can cover several lines, and they all brighten together, so the state is
- * the set of ids rather than a line index.
- */
-let hoverIds: string[] | null = null;
-let state: PanelState = { state: "loading", track: null };
-const listeners = new Set<() => void>();
-
 /** Panel width, clamped to the viewport when the surface is shown. */
 const PANEL_WIDTH = 380;
 
 /** Node of the highlighted line, kept so it can be scrolled into view. */
 let activeRef: { current: HTMLElement | null } | { current: null } = { current: null };
 
-const notify = () => {
-	for (const listener of listeners) listener();
-};
-
-const setState = (next: PanelState) => {
-	state = next;
-	notify();
-};
-
-/** Bumped per load so a slow response for a previous track is discarded. */
-let generation = 0;
-
-/**
- * The pass over a track's notes, cancelled when the listener moves on.
- *
- * Aborting stops the batches that have not been sent yet, which is most of a
- * long song's work: a popular one carries 50+ referents. The batch in flight is
- * not cancelled — client.cosmos.get takes no AbortSignal — but the generation
- * check drops its answer.
- */
-let inflight: AbortController | null = null;
-
-async function load(item: TrackItem | undefined) {
-	const key = item?.uri ?? "";
-	const mine = ++generation;
-	openLine = null;
-
-	inflight?.abort();
-	const controller = new AbortController();
-	inflight = controller;
-
-	if (!key) {
-		setState({ state: "no-genius", track: null });
-		return;
-	}
-
-	setState({ state: "loading", track: null });
-
-	const title = item?.name ?? "";
-	const artist = item?.artists?.map((a) => a.name ?? "").join(", ") ?? "";
-
-	try {
-		const hits = await searchSong(title, artist);
-		if (mine !== generation) return;
-
-		if (hits.length === 0) {
-			setState({ state: "no-genius", track: buildTrackView({ title, artist }) });
-			return;
-		}
-
-		const [song, lines] = await Promise.all([fetchSong(hits[0].id), fetchLyrics(hits[0].url)]);
-		if (mine !== generation) return;
-
-		if (lines.length === 0) {
-			setState({ state: "no-genius", track: null });
-			return;
-		}
-
-		const referentIds = [...new Set(lines.flatMap((line) => line.referentIds))];
-		const annotationless = song?.annotationCount === 0;
-
-		// Annotations and the timing axis are independent; a track without
-		// Spotify lyrics still gets its notes. The axis is one request and decides
-		// whether the lines can follow playback, so it is worth waiting for; the
-		// notes are many and are not.
-		const timing = await fetchSpotifyLyrics(key).catch(() => null);
-		if (mine !== generation) return;
-
-		// The lyrics and every anchor are known at this point, which is enough to
-		// read the song. Holding the panel on "Loading" until all fifty notes had
-		// arrived meant a popular track sat blank for the length of the whole
-		// fetch, so they stream in behind the first paint instead.
-		const settled = new Set<string>();
-		const paint = (notes: Map<string, Annotation>) => {
-			setState({
-				state: "ready",
-				track: buildTrackView({ title, artist, lines, notes, settled, timing, annotationless }),
-			});
-		};
-
-		paint(new Map());
-
-		await fetchAnnotations(referentIds, {
-			signal: controller.signal,
-			onBatch: (batch) => {
-				if (mine !== generation) return;
-				settled.clear();
-				for (const id of batch.settled) settled.add(id);
-				paint(batch.notes);
-			},
-		});
-	} catch (error) {
-		if (mine !== generation) return;
-		warn("[genius-lyrics] track failed", error);
-		setState({ state: "failed", track: null, error: detectFailure(error) });
-	}
-}
+const panel = createPanel({
+	searchSong,
+	fetchSong,
+	fetchLyrics,
+	fetchSpotifyLyrics,
+	fetchAnnotations,
+	detectFailure,
+	warn,
+});
 
 /**
  * Render one run of text, turning links back into links.
@@ -325,16 +219,25 @@ const Line = ({
 			: null,
 	);
 
-const Panel = () => {
+/**
+ * The panel's current state, re-rendering this component when it changes.
+ *
+ * The panel owns the state and the tree only reads it, so a notification has to
+ * come back through React: the panel is driven by song changes and by batches of
+ * notes arriving, neither of which is a render of this tree.
+ */
+const usePanel = () => {
 	const [, force] = React.useReducer((count: number) => count + 1, 0);
-	const [position, setPosition] = React.useState<number | null>(null);
 
-	React.useEffect(() => {
-		listeners.add(force);
-		return () => {
-			listeners.delete(force);
-		};
-	}, []);
+	React.useEffect(() => panel.subscribe(force), []);
+
+	return panel;
+};
+
+const Panel = () => {
+	const panel = usePanel();
+	const state = panel.state;
+	const [position, setPosition] = React.useState<number | null>(null);
 
 	// Follow playback only when Spotify supplied an axis; without one there is
 	// nothing to compare the clock against and every line would flicker in turn.
@@ -422,16 +325,11 @@ const Panel = () => {
 					key: view.index,
 					view,
 					isActive: view.index === activeIndex,
-					isOpen: openLine === view.index,
-					hovered: hoverIds !== null && view.referentIds.some((id) => hoverIds.includes(id)),
-					onHover: (ids) => {
-						hoverIds = ids;
-						notify();
-					},
-					onToggle: () => {
-						openLine = openLine === view.index ? null : view.index;
-						notify();
-					},
+					isOpen: panel.openLine === view.index,
+					hovered:
+						panel.hoverIds !== null && view.referentIds.some((id) => panel.hoverIds.includes(id)),
+					onHover: (ids) => panel.hover(ids),
+					onToggle: () => panel.toggle(view.index),
 				}),
 			),
 		),
@@ -446,14 +344,10 @@ const Panel = () => {
  * asked for this track.
  */
 const App = () => {
-	const [, force] = React.useReducer((count: number) => count + 1, 0);
+	const currentTrack = () => client.player.data?.item as TrackItem | undefined;
 
 	React.useEffect(() => {
-		listeners.add(force);
-		void load(client.player.data?.item as TrackItem | undefined);
-		return () => {
-			listeners.delete(force);
-		};
+		void panel.load(currentTrack());
 	}, []);
 
 	// The player may not be ready on first render; re-check once it has an item.
@@ -462,7 +356,7 @@ const App = () => {
 		const timer = setInterval(() => {
 			if (!client.player.data?.item) return;
 			clearInterval(timer);
-			void load(client.player.data?.item as TrackItem | undefined);
+			void panel.load(currentTrack());
 		}, 200);
 		return () => clearInterval(timer);
 	}, []);
@@ -470,7 +364,7 @@ const App = () => {
 	// Follow the track while the page stays open.
 	React.useEffect(() => {
 		const onChange = () => {
-			void load(client.player.data?.item as TrackItem | undefined);
+			void panel.load(currentTrack());
 		};
 		client.player.addEventListener("songchange", onChange);
 		return () => client.player.removeEventListener("songchange", onChange);

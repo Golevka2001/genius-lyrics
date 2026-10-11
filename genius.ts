@@ -163,14 +163,14 @@ const fetchAnnotationUncached = async (referentId: string): Promise<Annotation> 
 /** Referents are immutable per song, so one lookup per id is enough. */
 const annotationCache = createCache(fetchAnnotationUncached);
 
-/** What one pass over the referents has resolved so far. */
+/** What one batch of the referents resolved. */
 export interface AnnotationBatch {
-	/** Every note that carries a body, accumulated across batches. */
+	/** The notes in this batch that carry a body. */
 	notes: Map<string, Annotation>;
 	/**
-	 * Every id that has been answered, including the ones that turned out to
-	 * have no body. The caller needs this to tell "still loading" from "nothing
-	 * to show", which are otherwise the same empty note map.
+	 * Every id this batch answered, including the ones that turned out to have no
+	 * body. The caller needs this to tell "still loading" from "nothing to show",
+	 * which are otherwise the same empty note map.
 	 */
 	settled: string[];
 }
@@ -213,14 +213,19 @@ export const fetchAnnotations = async (
 
 		const batch = unique.slice(i, i + BATCH_SIZE);
 		const results = await Promise.allSettled(batch.map((id) => annotationCache.get(id)));
+		const settledHere: AnnotationBatch = { notes: new Map(), settled: [] };
 
 		results.forEach((result, index) => {
 			const id = batch[index];
 			settled.push(id);
+			settledHere.settled.push(id);
 			if (result.status === "fulfilled") {
 				// An annotation with no body is remembered as "nothing to show" so
 				// it is not asked for again, but it never enters the map.
-				if (result.value.text) notes.set(id, result.value);
+				if (result.value.text) {
+					notes.set(id, result.value);
+					settledHere.notes.set(id, result.value);
+				}
 				return;
 			}
 			// Losing one note is survivable; losing the batch to a rate limit is
@@ -228,7 +233,7 @@ export const fetchAnnotations = async (
 			warn("[genius-lyrics] annotation batch failed", id, String(result.reason));
 		});
 
-		onBatch?.({ notes: new Map(notes), settled: [...settled] });
+		onBatch?.(settledHere);
 	}
 
 	return { notes, settled };
