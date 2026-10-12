@@ -4,7 +4,7 @@ View Genius annotated lyrics for the song currently playing in Spotify.
 
 ![Showcase](README.assets/showcase.gif)
 
-Thanks to the authors of [lyrics-plus](https://github.com/spicetify/modules/tree/main/modules/lyrics-plus) for the Genius lyrics viewer foundation.
+Parts of this project are based on [lyrics-plus](https://github.com/spicetify/modules/tree/main/modules/lyrics-plus).
 
 ## Features
 
@@ -59,15 +59,19 @@ Make sure the Spicetify daemon is running, then reopen Genius Lyrics or click Re
 ### No lyrics are shown
 
 Not every song has lyrics on Genius.
+
 Check the track and artist information, or click Retry to try again.
 
 ### Synced lyrics are missing or incomplete
 
 Synced lyrics are _experimental_.
+
 Some songs have no synced timeline.
+
 And Spotify may combine multiple Genius lines into one timestamp sometimes, so some lines may be skipped.
 
 ### Annotations are still loading
 
 Lyrics and annotations are fetched separately.
+
 Lyrics can appear before the annotations finish loading; slow connections may leave some lines in a loading state temporarily.
