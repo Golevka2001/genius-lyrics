@@ -4,6 +4,8 @@ View Genius annotated lyrics for the song currently playing in Spotify.
 
 ![Showcase](README.assets/showcase.gif)
 
+Thanks to the authors of [lyrics-plus](https://github.com/spicetify/modules/tree/main/modules/lyrics-plus) for the Genius lyrics viewer foundation.
+
 ## Features
 
 - Displays **lyrics and annotations from Genius** for the current track.
