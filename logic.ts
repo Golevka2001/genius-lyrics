@@ -216,7 +216,8 @@ export function pickHit(hits: SongHit[], title: string, artist: string): SongHit
 		if (wanted && hitTitle) {
 			if (hitTitle === wantedRaw) value += 4;
 			else if (hitStripped === wanted) value += 3;
-			else if (wantedRaw.length >= 3 && (hitTitle.includes(wantedRaw) || wantedRaw.includes(hitTitle))) value += 2;
+			else if (wantedRaw.length >= 3 && (hitTitle.includes(wantedRaw) || wantedRaw.includes(hitTitle)))
+				value += 2;
 		}
 		const hitArtist = normalize(hit.artist);
 		for (const name of wantedArtists) {

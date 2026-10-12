@@ -55,11 +55,14 @@ test("activeLineIndex keeps the first Genius line for a shared Spotify timestamp
 
 test("applyTiming skips a Spotify-only line without shifting the rest", () => {
 	assert.deepEqual(
-		timedTexts([line("first"), line("third")], [
-			{ text: "first", startTimeMs: 1000 },
-			{ text: "second, only in Spotify", startTimeMs: 2000 },
-			{ text: "third", startTimeMs: 3000 },
-		]),
+		timedTexts(
+			[line("first"), line("third")],
+			[
+				{ text: "first", startTimeMs: 1000 },
+				{ text: "second, only in Spotify", startTimeMs: 2000 },
+				{ text: "third", startTimeMs: 3000 },
+			],
+		),
 		[
 			["first", 1000],
 			["third", 3000],
@@ -69,10 +72,13 @@ test("applyTiming skips a Spotify-only line without shifting the rest", () => {
 
 test("applyTiming leaves a Genius-only line untimed without shifting later lines", () => {
 	assert.deepEqual(
-		timedTexts([line("first"), line("genius-only"), line("third")], [
-			{ text: "first", startTimeMs: 1000 },
-			{ text: "third", startTimeMs: 3000 },
-		]),
+		timedTexts(
+			[line("first"), line("genius-only"), line("third")],
+			[
+				{ text: "first", startTimeMs: 1000 },
+				{ text: "third", startTimeMs: 3000 },
+			],
+		),
 		[
 			["first", 1000],
 			["genius-only", undefined],
@@ -83,10 +89,13 @@ test("applyTiming leaves a Genius-only line untimed without shifting later lines
 
 test("applyTiming ignores Genius section headers and blank lines", () => {
 	assert.deepEqual(
-		timedTexts([line("[Verse 1]"), line("first"), line(""), line("second")], [
-			{ text: "first", startTimeMs: 1000 },
-			{ text: "second", startTimeMs: 2000 },
-		]),
+		timedTexts(
+			[line("[Verse 1]"), line("first"), line(""), line("second")],
+			[
+				{ text: "first", startTimeMs: 1000 },
+				{ text: "second", startTimeMs: 2000 },
+			],
+		),
 		[
 			["[Verse 1]", undefined],
 			["first", 1000],
@@ -186,10 +195,13 @@ test("applyTiming handles several adjacent lines on both sides", () => {
 
 test("applyTiming does not let a near match consume an unrelated following line", () => {
 	assert.deepEqual(
-		timedTexts([line("I know the storm is coming"), line("unrelated lyric"), line("final line")], [
-			{ text: "I know the storm is comin", startTimeMs: 1000 },
-			{ text: "final line", startTimeMs: 3000 },
-		]),
+		timedTexts(
+			[line("I know the storm is coming"), line("unrelated lyric"), line("final line")],
+			[
+				{ text: "I know the storm is comin", startTimeMs: 1000 },
+				{ text: "final line", startTimeMs: 3000 },
+			],
+		),
 		[
 			["I know the storm is coming", 1000],
 			["unrelated lyric", undefined],
@@ -260,13 +272,16 @@ test("applyTiming keeps Diamonds Verse 2 groups in order", () => {
 
 test("applyTiming survives unmatched material on both sides", () => {
 	assert.deepEqual(
-		timedTexts([line("la la la"), line("shared one"), line("spoken bridge"), line("shared two")], [
-			{ text: "instrumental break", startTimeMs: 500 },
-			{ text: "shared one", startTimeMs: 1000 },
-			{ text: "crowd noise", startTimeMs: 1500 },
-			{ text: "shared two", startTimeMs: 2000 },
-			{ text: "instrumental outro", startTimeMs: 2500 },
-		]),
+		timedTexts(
+			[line("la la la"), line("shared one"), line("spoken bridge"), line("shared two")],
+			[
+				{ text: "instrumental break", startTimeMs: 500 },
+				{ text: "shared one", startTimeMs: 1000 },
+				{ text: "crowd noise", startTimeMs: 1500 },
+				{ text: "shared two", startTimeMs: 2000 },
+				{ text: "instrumental outro", startTimeMs: 2500 },
+			],
+		),
 		[
 			["la la la", undefined],
 			["shared one", 1000],
@@ -277,18 +292,20 @@ test("applyTiming survives unmatched material on both sides", () => {
 });
 
 test("applyTiming keeps punctuation and case differences from breaking alignment", () => {
-	assert.deepEqual(
-		timedTexts([line("I'M OUTTA CONTROL!")], [{ text: "I'm outta control", startTimeMs: 1200 }]),
-		[["I'M OUTTA CONTROL!", 1200]],
-	);
+	assert.deepEqual(timedTexts([line("I'M OUTTA CONTROL!")], [{ text: "I'm outta control", startTimeMs: 1200 }]), [
+		["I'M OUTTA CONTROL!", 1200],
+	]);
 });
 
 test("applyTiming keeps non-Latin lyrics alignable", () => {
 	assert.deepEqual(
-		timedTexts([line("你好吗？"), line("我很好")], [
-			{ text: "你好吗", startTimeMs: 1000 },
-			{ text: "我很好", startTimeMs: 2000 },
-		]),
+		timedTexts(
+			[line("你好吗？"), line("我很好")],
+			[
+				{ text: "你好吗", startTimeMs: 1000 },
+				{ text: "我很好", startTimeMs: 2000 },
+			],
+		),
 		[
 			["你好吗？", 1000],
 			["我很好", 2000],

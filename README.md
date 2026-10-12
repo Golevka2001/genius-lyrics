@@ -10,7 +10,7 @@ Thanks to the authors of [lyrics-plus](https://github.com/spicetify/modules/tree
 
 - Displays **lyrics and annotations from Genius** for the current track.
 - Click an annotated line to read the **explanation and quotes** attached to it.
-- **Synced lyrics**: Highlights the current lyric line as the song plays. *(Experimental)*
+- **Synced lyrics**: Highlights the current lyric line as the song plays. _(Experimental)_
 
 ## Requirements
 
@@ -63,7 +63,7 @@ Check the track and artist information, or click Retry to try again.
 
 ### Synced lyrics are missing or incomplete
 
-Synced lyrics are *experimental*.
+Synced lyrics are _experimental_.
 Some songs have no synced timeline.
 And Spotify may combine multiple Genius lines into one timestamp sometimes, so some lines may be skipped.
 

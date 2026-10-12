@@ -81,7 +81,10 @@ function joinTimingText(entries: Array<{ text: string }>): string {
 	return entries.map((entry) => normalizeTimingText(entry.text)).join("");
 }
 
-function alignTiming(lines: LyricLine[], timing: TimingEntry[]): Array<{
+function alignTiming(
+	lines: LyricLine[],
+	timing: TimingEntry[],
+): Array<{
 	geniusIndexes: number[];
 	spotifyIndexes: number[];
 }> {
@@ -117,12 +120,13 @@ function alignTiming(lines: LyricLine[], timing: TimingEntry[]): Array<{
 					const matchScore = similarity(left, right);
 					if (matchScore < 0.62) continue;
 					const groupPenalty = (geniusCount - 1 + spotifyCount - 1) * 0.5;
-					update(
-						i + geniusCount,
-						j + spotifyCount,
-						score[i][j] + matchScore * 10 - groupPenalty,
-						{ kind: "match", geniusStart: i, geniusCount, spotifyStart: j, spotifyCount },
-					);
+					update(i + geniusCount, j + spotifyCount, score[i][j] + matchScore * 10 - groupPenalty, {
+						kind: "match",
+						geniusStart: i,
+						geniusCount,
+						spotifyStart: j,
+						spotifyCount,
+					});
 				}
 			}
 		}
@@ -136,7 +140,9 @@ function alignTiming(lines: LyricLine[], timing: TimingEntry[]): Array<{
 		if (!step) break;
 		if (step.kind === "match") {
 			matches.unshift({
-				geniusIndexes: genius.slice(step.geniusStart, step.geniusStart + step.geniusCount).map((entry) => entry.index),
+				geniusIndexes: genius
+					.slice(step.geniusStart, step.geniusStart + step.geniusCount)
+					.map((entry) => entry.index),
 				spotifyIndexes: spotify
 					.slice(step.spotifyStart, step.spotifyStart + step.spotifyCount)
 					.map((entry) => entry.index),
@@ -214,8 +220,7 @@ export function activeLineIndex(lines: LineView[], progressMs: number): number {
 			(active < 0 || line.startTimeMs > (lines[active].startTimeMs ?? -1))
 		) {
 			active = index;
-		}
-		else if (line.startTimeMs !== undefined && line.startTimeMs > progressMs) break;
+		} else if (line.startTimeMs !== undefined && line.startTimeMs > progressMs) break;
 	}
 	return active;
 }

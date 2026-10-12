@@ -162,9 +162,7 @@ test("the lyrics are painted before any note has arrived", async () => {
 
 test("the ready header uses the Genius song details", async () => {
 	const h = harness({
-		searchSong: async () => [
-			{ ...hit, title: "Spotify title", artist: "Spotify artist" },
-		],
+		searchSong: async () => [{ ...hit, title: "Spotify title", artist: "Spotify artist" }],
 		fetchOriginalSong: async () => ({
 			...song,
 			title: "Genius title",
