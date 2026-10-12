@@ -2,7 +2,7 @@
 
 View Genius annotated lyrics for the song currently playing in Spotify.
 
-<!-- Screenshot placeholder: add one screenshot of the Genius Lyrics page here. -->
+![Showcase](README.assets/showcase.gif)
 
 ## Features
 

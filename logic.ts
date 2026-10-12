@@ -216,7 +216,7 @@ export function pickHit(hits: SongHit[], title: string, artist: string): SongHit
 		if (wanted && hitTitle) {
 			if (hitTitle === wantedRaw) value += 4;
 			else if (hitStripped === wanted) value += 3;
-			else if (hitTitle.includes(wantedRaw) || wantedRaw.includes(hitTitle)) value += 2;
+			else if (wantedRaw.length >= 3 && (hitTitle.includes(wantedRaw) || wantedRaw.includes(hitTitle))) value += 2;
 		}
 		const hitArtist = normalize(hit.artist);
 		for (const name of wantedArtists) {
@@ -235,12 +235,13 @@ export function pickHit(hits: SongHit[], title: string, artist: string): SongHit
 			bestScore = value;
 		}
 	}
-	return bestScore > 0 ? best : hits[0];
+	return bestScore > 0 ? best : null;
 }
 
 export type GeniusSong = {
 	id: number;
 	title: string;
+	artist: string;
 	url: string;
 	annotationCount: number;
 	translationIds: number[];
@@ -261,6 +262,12 @@ export function parseSong(payload: unknown): GeniusSong | null {
 	return {
 		id: song.id,
 		title: typeof song.title === "string" ? song.title : "",
+		artist:
+			typeof song.artist_names === "string"
+				? song.artist_names
+				: typeof (song.primary_artist as Record<string, unknown> | undefined)?.name === "string"
+					? (song.primary_artist as { name: string }).name
+					: "",
 		url: typeof song.url === "string" ? song.url : "",
 		annotationCount: typeof song.annotation_count === "number" ? song.annotation_count : 0,
 		translationIds: ((song.translation_songs ?? []) as Array<Record<string, unknown>>)

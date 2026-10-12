@@ -119,6 +119,19 @@ test("pickHit tells a remix from the track it remixes", () => {
 	assert.equal(pickHit(hits, "Despacito (Remix)", "Luis Fonsi, Daddy Yankee, Justin Bieber")?.id, 3057010);
 });
 
+test("pickHit rejects unrelated search results", () => {
+	const hits = [
+		{
+			id: 4667524,
+			title: "100ml (Freestyle)",
+			url: "u1",
+			artist: "D.OZi",
+			annotationCount: 30,
+		},
+	];
+	assert.equal(pickHit(hits, "+ 1", "ØZI"), null);
+});
+
 test("parseLyricLines keeps the italics and bold that mark who sings what", () => {
 	// Shape taken from XG's IN THE RAIN.
 	const html = `<div data-lyrics-container="true">[Verse 1: Juria, <i>Chisa</i>]<br/>

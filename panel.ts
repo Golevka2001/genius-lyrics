@@ -106,6 +106,8 @@ export function createPanel(transport: Transport): Panel {
 				return;
 			}
 
+			const geniusTitle = song?.title || hit.title || title;
+			const geniusArtist = song?.artist || hit.artist || artist;
 			const referentIds = [...new Set(lines.flatMap((line) => line.referentIds))];
 
 			const lyrics = await transport.fetchSpotifyLyrics(key).catch(() => null);
@@ -121,7 +123,7 @@ export function createPanel(transport: Transport): Panel {
 			const paint = () => {
 				setState({
 					state: "ready",
-					track: buildTrackView({ title, artist, lines: timed, notes, settled }),
+					track: buildTrackView({ title: geniusTitle, artist: geniusArtist, lines: timed, notes, settled }),
 				});
 			};
 

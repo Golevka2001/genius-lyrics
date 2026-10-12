@@ -25,6 +25,7 @@ const note = (id: string): Annotation => ({
 const song: GeniusSong = {
 	id: 1,
 	title: "Creep",
+	artist: "Radiohead",
 	url: "https://genius.com/x",
 	annotationCount: 1,
 	translationIds: [],
@@ -157,6 +158,25 @@ test("the lyrics are painted before any note has arrived", async () => {
 	h.gates.get("one-1")?.release();
 	h.gates.get("one-2")?.release();
 	await loading;
+});
+
+test("the ready header uses the Genius song details", async () => {
+	const h = harness({
+		searchSong: async () => [
+			{ ...hit, title: "Spotify title", artist: "Spotify artist" },
+		],
+		fetchOriginalSong: async () => ({
+			...song,
+			title: "Genius title",
+			artist: "Genius artist",
+		}),
+	});
+	const panel = createPanel(h.transport);
+
+	await panel.load(track("spotify-title"));
+
+	assert.equal(panel.state.track?.title, "Genius title");
+	assert.equal(panel.state.track?.artist, "Genius artist");
 });
 
 test("an answer that lands after the track changed is dropped", async () => {
