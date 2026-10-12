@@ -89,7 +89,25 @@
 	border-radius: 5px;
 	transition:
 		opacity 120ms ease,
-		background 120ms ease;
+		background 120ms ease,
+		font-size 180ms ease;
+}
+
+.gl-line::before {
+	content: "›";
+	position: absolute;
+	top: 7px;
+	left: -14px;
+	opacity: 0;
+	font-size: 1.15em;
+	font-weight: 700;
+	pointer-events: none;
+	transform: translateX(-4px);
+}
+
+.gl-line-active::before {
+	opacity: 1;
+	transform: translateX(0);
 }
 
 .gl-line:disabled {
@@ -390,14 +408,7 @@
 .gl-line-active {
 	opacity: 1;
 	font-weight: 600;
-	font-size: 1.05em;
-}
-
-/* The current line gets a wash behind its words rather than across the row, so it
-   reads at a glance without competing with the annotation tint — a lighter mix
-   than the notes get is what keeps it in second place. */
-.gl-line-active > .gl-text {
-	background: color-mix(in srgb, currentColor 7%, transparent);
+	font-size: 1.1em;
 }
 
 /* An open note is the thing the reader is looking at, so it outranks the playback

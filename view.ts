@@ -107,8 +107,8 @@ function alignTiming(lines: LyricLine[], timing: TimingEntry[]): Array<{
 	for (let i = 0; i <= genius.length; i += 1) {
 		for (let j = 0; j <= spotify.length; j += 1) {
 			if (!Number.isFinite(score[i][j])) continue;
-			if (i < genius.length) update(i + 1, j, score[i][j] - 1.5, { kind: "skip-genius" });
-			if (j < spotify.length) update(i, j + 1, score[i][j] - 1.5, { kind: "skip-spotify" });
+			if (i < genius.length) update(i + 1, j, score[i][j] - 1, { kind: "skip-genius" });
+			if (j < spotify.length) update(i, j + 1, score[i][j] - 1, { kind: "skip-spotify" });
 
 			for (let geniusCount = 1; geniusCount <= 3 && i + geniusCount <= genius.length; geniusCount += 1) {
 				for (let spotifyCount = 1; spotifyCount <= 3 && j + spotifyCount <= spotify.length; spotifyCount += 1) {
@@ -116,7 +116,7 @@ function alignTiming(lines: LyricLine[], timing: TimingEntry[]): Array<{
 					const right = joinTimingText(spotify.slice(j, j + spotifyCount));
 					const matchScore = similarity(left, right);
 					if (matchScore < 0.62) continue;
-					const groupPenalty = (geniusCount - 1 + spotifyCount - 1) * 0.25;
+					const groupPenalty = (geniusCount - 1 + spotifyCount - 1) * 0.5;
 					update(
 						i + geniusCount,
 						j + spotifyCount,
@@ -208,7 +208,13 @@ export function buildTrackView({ title, artist, lines = [], notes = new Map(), s
 export function activeLineIndex(lines: LineView[], progressMs: number): number {
 	let active = -1;
 	for (const [index, line] of lines.entries()) {
-		if (line.startTimeMs !== undefined && line.startTimeMs <= progressMs) active = index;
+		if (
+			line.startTimeMs !== undefined &&
+			line.startTimeMs <= progressMs &&
+			(active < 0 || line.startTimeMs > (lines[active].startTimeMs ?? -1))
+		) {
+			active = index;
+		}
 		else if (line.startTimeMs !== undefined && line.startTimeMs > progressMs) break;
 	}
 	return active;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyTiming, buildTrackView, hasTimeline, type LineView } from "../view.ts";
+import { activeLineIndex, applyTiming, buildTrackView, hasTimeline, type LineView } from "../view.ts";
 import type { Annotation, LyricLine } from "../logic.ts";
 
 const note = (id: string, text: string, verified = false): Annotation => ({
@@ -47,6 +47,12 @@ test("hasTimeline reports whether following playback is possible", () => {
 	assert.equal(hasTimeline([viewLine(0, "a"), viewLine(1, "b", 10)]), true);
 });
 
+test("activeLineIndex keeps the first Genius line for a shared Spotify timestamp", () => {
+	const lines = [viewLine(0, "first", 1000), viewLine(1, "second", 1000), viewLine(2, "next", 2000)];
+	assert.equal(activeLineIndex(lines, 1500), 0);
+	assert.equal(activeLineIndex(lines, 2200), 2);
+});
+
 test("applyTiming skips a Spotify-only line without shifting the rest", () => {
 	assert.deepEqual(
 		timedTexts([line("first"), line("third")], [
@@ -88,6 +94,30 @@ test("applyTiming ignores Genius section headers and blank lines", () => {
 			["second", 2000],
 		],
 	);
+});
+
+test("applyTiming skips unmatched ordinary text around a combined lyric line", () => {
+	const timed = applyTiming(
+		[line("[Verse 2]"), line("Palms rise to the universe"), line("As we moonshine and Molly")],
+		[{ text: "Palms rise to the universe as we moonshine and molly", startTimeMs: 94950 }],
+	);
+
+	assert.equal(timed[0].startTimeMs, undefined);
+	assert.equal(timed[1].startTimeMs, 94950);
+	assert.equal(timed[2].startTimeMs, 94950);
+});
+
+test("applyTiming treats section headers as ordinary text", () => {
+	const timed = applyTiming(
+		[line("[Verse 2]"), line("Palms rise to the universe")],
+		[
+			{ text: "[Verse 2]", startTimeMs: 90000 },
+			{ text: "Palms rise to the universe", startTimeMs: 94950 },
+		],
+	);
+
+	assert.equal(timed[0].startTimeMs, 90000);
+	assert.equal(timed[1].startTimeMs, 94950);
 });
 
 test("applyTiming gives repeated choruses their own offsets", () => {
@@ -186,6 +216,46 @@ test("applyTiming handles three-to-one and one-to-three groups", () => {
 			["fourth phrase continues", 2000],
 		],
 	);
+});
+
+test("applyTiming matches Diamonds when Spotify combines two Genius lines", () => {
+	const timed = applyTiming(
+		[
+			line("You're a shooting star I see"),
+			line("A vision of ecstasy"),
+			line("When you hold me, I'm alive"),
+			line("We're like diamonds in the sky"),
+		],
+		[
+			{ text: "You're a shooting star I see, a vision of ecstasy", startTimeMs: 21830 },
+			{ text: "When you hold me, I'm alive, we're like diamonds in the sky", startTimeMs: 26400 },
+		],
+	);
+
+	assert.equal(timed[0].startTimeMs, 21830);
+	assert.equal(timed[1].startTimeMs, 21830);
+	assert.equal(timed[2].startTimeMs, 26400);
+	assert.equal(timed[3].startTimeMs, 26400);
+});
+
+test("applyTiming keeps Diamonds Verse 2 groups in order", () => {
+	const timed = applyTiming(
+		[
+			line("Palms rise to the universe"),
+			line("As we moonshine and Molly"),
+			line("Feel the warmth, we'll never die"),
+			line("We're like diamonds in the sky"),
+		],
+		[
+			{ text: "Palms rise to the universe as we moonshine and molly", startTimeMs: 94950 },
+			{ text: "Feel the warmth, we'll never die, we're like diamonds in the sky", startTimeMs: 99620 },
+		],
+	);
+
+	assert.equal(timed[0].startTimeMs, 94950);
+	assert.equal(timed[1].startTimeMs, 94950);
+	assert.equal(timed[2].startTimeMs, 99620);
+	assert.equal(timed[3].startTimeMs, 99620);
 });
 
 test("applyTiming survives unmatched material on both sides", () => {

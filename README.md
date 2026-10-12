@@ -56,8 +56,16 @@ Make sure the Spicetify daemon is running, then reopen Genius Lyrics or click Re
 
 ### No lyrics are shown
 
-Not every song has lyrics on Genius. Check the track and artist information, or click Retry to try again.
+Not every song has lyrics on Genius.
+Check the track and artist information, or click Retry to try again.
+
+### Synced lyrics are missing or incomplete
+
+Synced lyrics are *experimental*.
+Some songs have no synced timeline.
+And Spotify may combine multiple Genius lines into one timestamp sometimes, so some lines may be skipped.
 
 ### Annotations are still loading
 
-Lyrics and annotations are fetched separately. Lyrics can appear before the annotations finish loading; slow connections may leave some lines in a loading state temporarily.
+Lyrics and annotations are fetched separately.
+Lyrics can appear before the annotations finish loading; slow connections may leave some lines in a loading state temporarily.
