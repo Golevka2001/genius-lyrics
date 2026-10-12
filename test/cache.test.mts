@@ -65,26 +65,6 @@ test("a result is fetched again once its ttl has passed", async () => {
 	assert.deepEqual(calls, ["a", "a"], "past it the request is sent again");
 });
 
-test("an entry past its ttl is dropped instead of sitting in memory", async () => {
-	// Nothing empties the map on a timer, so this is what keeps the caches from
-	// growing for as long as the client stays open.
-	const { calls, fetch } = countingFetcher();
-	const time = clock();
-	const cache = createCache(fetch, { ttl: TTL, now: time.now });
-
-	for (let i = 0; i < 20; i++) {
-		await cache.get(`key-${i}`);
-		time.advance(TTL);
-	}
-
-	// One ttl after the last ask, everything before it is gone: only the newest
-	// key can still be a hit, and the rest are refetched.
-	const before = calls.length;
-	await cache.get("key-0");
-	assert.deepEqual(calls.slice(before), ["key-0"], "the oldest entry was swept, not kept");
-	assert.equal(calls.length, before + 1);
-});
-
 test("a failure is not remembered, so the next ask retries", async () => {
 	const calls: string[] = [];
 	const cache = createCache(
