@@ -27,6 +27,9 @@ const viewLine = (index: number, text: string, startTimeMs?: number): LineView =
 	startTimeMs,
 });
 
+const timedTexts = (lines: LyricLine[], timing: Array<{ text: string; startTimeMs: number }>) =>
+	applyTiming(lines, timing).map((entry) => [entry.text, entry.startTimeMs] as const);
+
 test("applyTiming matches Spotify's axis onto Genius' lines", () => {
 	const timed = applyTiming(
 		[line("Now, this looks like a job for me"), line("So, everybody, just follow me")],
@@ -44,6 +47,49 @@ test("hasTimeline reports whether following playback is possible", () => {
 	assert.equal(hasTimeline([viewLine(0, "a"), viewLine(1, "b", 10)]), true);
 });
 
+test("applyTiming skips a Spotify-only line without shifting the rest", () => {
+	assert.deepEqual(
+		timedTexts([line("first"), line("third")], [
+			{ text: "first", startTimeMs: 1000 },
+			{ text: "second, only in Spotify", startTimeMs: 2000 },
+			{ text: "third", startTimeMs: 3000 },
+		]),
+		[
+			["first", 1000],
+			["third", 3000],
+		],
+	);
+});
+
+test("applyTiming leaves a Genius-only line untimed without shifting later lines", () => {
+	assert.deepEqual(
+		timedTexts([line("first"), line("genius-only"), line("third")], [
+			{ text: "first", startTimeMs: 1000 },
+			{ text: "third", startTimeMs: 3000 },
+		]),
+		[
+			["first", 1000],
+			["genius-only", undefined],
+			["third", 3000],
+		],
+	);
+});
+
+test("applyTiming ignores Genius section headers and blank lines", () => {
+	assert.deepEqual(
+		timedTexts([line("[Verse 1]"), line("first"), line(""), line("second")], [
+			{ text: "first", startTimeMs: 1000 },
+			{ text: "second", startTimeMs: 2000 },
+		]),
+		[
+			["[Verse 1]", undefined],
+			["first", 1000],
+			["", undefined],
+			["second", 2000],
+		],
+	);
+});
+
 test("applyTiming gives repeated choruses their own offsets", () => {
 	// Spotify repeats the chorus with a different offset; matching every Genius
 	// occurrence to the first one would freeze the highlight on the first repeat.
@@ -58,6 +104,152 @@ test("applyTiming gives repeated choruses their own offsets", () => {
 	assert.equal(timed[0].startTimeMs, 1000);
 	assert.equal(timed[1].startTimeMs, 2000);
 	assert.equal(timed[2].startTimeMs, 9000, "the second chorus must use its own offset");
+});
+
+test("applyTiming matches a Genius line made from several Spotify lines", () => {
+	const timed = applyTiming(
+		[line("first verse, second verse"), line("third verse")],
+		[
+			{ text: "first verse", startTimeMs: 1000 },
+			{ text: "second verse", startTimeMs: 2000 },
+			{ text: "third verse", startTimeMs: 3000 },
+		],
+	);
+
+	assert.equal(timed[0].startTimeMs, 1000);
+	assert.equal(timed[1].startTimeMs, 3000);
+});
+
+test("applyTiming splits one Spotify line across several Genius lines", () => {
+	const timed = applyTiming(
+		[line("first part"), line("second part"), line("next line")],
+		[
+			{ text: "first part second part", startTimeMs: 1000 },
+			{ text: "next line", startTimeMs: 5000 },
+		],
+	);
+
+	assert.equal(timed[0].startTimeMs, 1000);
+	assert.equal(timed[1].startTimeMs, 1000);
+	assert.equal(timed[2].startTimeMs, 5000);
+});
+
+test("applyTiming handles several adjacent lines on both sides", () => {
+	assert.deepEqual(
+		timedTexts(
+			[line("one"), line("two"), line("three"), line("four"), line("five")],
+			[
+				{ text: "one two", startTimeMs: 1000 },
+				{ text: "three four", startTimeMs: 2000 },
+				{ text: "five", startTimeMs: 3000 },
+			],
+		),
+		[
+			["one", 1000],
+			["two", 1000],
+			["three", 2000],
+			["four", 2000],
+			["five", 3000],
+		],
+	);
+});
+
+test("applyTiming does not let a near match consume an unrelated following line", () => {
+	assert.deepEqual(
+		timedTexts([line("I know the storm is coming"), line("unrelated lyric"), line("final line")], [
+			{ text: "I know the storm is comin", startTimeMs: 1000 },
+			{ text: "final line", startTimeMs: 3000 },
+		]),
+		[
+			["I know the storm is coming", 1000],
+			["unrelated lyric", undefined],
+			["final line", 3000],
+		],
+	);
+});
+
+test("applyTiming handles three-to-one and one-to-three groups", () => {
+	assert.deepEqual(
+		timedTexts(
+			[line("first"), line("second"), line("third"), line("fourth phrase continues")],
+			[
+				{ text: "first second third", startTimeMs: 1000 },
+				{ text: "fourth", startTimeMs: 2000 },
+				{ text: "phrase", startTimeMs: 3000 },
+				{ text: "continues", startTimeMs: 4000 },
+			],
+		),
+		[
+			["first", 1000],
+			["second", 1000],
+			["third", 1000],
+			["fourth phrase continues", 2000],
+		],
+	);
+});
+
+test("applyTiming survives unmatched material on both sides", () => {
+	assert.deepEqual(
+		timedTexts([line("la la la"), line("shared one"), line("spoken bridge"), line("shared two")], [
+			{ text: "instrumental break", startTimeMs: 500 },
+			{ text: "shared one", startTimeMs: 1000 },
+			{ text: "crowd noise", startTimeMs: 1500 },
+			{ text: "shared two", startTimeMs: 2000 },
+			{ text: "instrumental outro", startTimeMs: 2500 },
+		]),
+		[
+			["la la la", undefined],
+			["shared one", 1000],
+			["spoken bridge", undefined],
+			["shared two", 2000],
+		],
+	);
+});
+
+test("applyTiming keeps punctuation and case differences from breaking alignment", () => {
+	assert.deepEqual(
+		timedTexts([line("I'M OUTTA CONTROL!")], [{ text: "I'm outta control", startTimeMs: 1200 }]),
+		[["I'M OUTTA CONTROL!", 1200]],
+	);
+});
+
+test("applyTiming keeps non-Latin lyrics alignable", () => {
+	assert.deepEqual(
+		timedTexts([line("你好吗？"), line("我很好")], [
+			{ text: "你好吗", startTimeMs: 1000 },
+			{ text: "我很好", startTimeMs: 2000 },
+		]),
+		[
+			["你好吗？", 1000],
+			["我很好", 2000],
+		],
+	);
+});
+
+test("applyTiming ignores ad-lib differences in parenthetical text", () => {
+	const timed = applyTiming(
+		[line("(Yes) One touch and I brand-newed it for ya (Ooh)"), line("Next line")],
+		[
+			{ text: "(Yes) one touch and I brand-newed it for ya (oh)", startTimeMs: 1000 },
+			{ text: "Next line", startTimeMs: 2000 },
+		],
+	);
+
+	assert.equal(timed[0].startTimeMs, 1000);
+	assert.equal(timed[1].startTimeMs, 2000);
+});
+
+test("applyTiming tolerates small lyric transcription differences", () => {
+	const timed = applyTiming(
+		[line("My twisted humor make him laugh so often"), line("Next line")],
+		[
+			{ text: "My twisted humor makes him laugh so often", startTimeMs: 1000 },
+			{ text: "Next line", startTimeMs: 2000 },
+		],
+	);
+
+	assert.equal(timed[0].startTimeMs, 1000);
+	assert.equal(timed[1].startTimeMs, 2000);
 });
 
 test("a line is annotated before its note arrives, or the panel could never be clicked", () => {

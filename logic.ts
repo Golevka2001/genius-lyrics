@@ -5,7 +5,7 @@ export function normalize(value: string): string {
 		.toLowerCase()
 		.replace(/[‘’]/g, "")
 		.replace(/[“”]/g, "")
-		.replace(/[^a-z0-9\n]/g, "");
+		.replace(/[^\p{L}\p{N}\n]/gu, "");
 }
 
 export function cleanTitleText(title: string): string {
@@ -486,10 +486,20 @@ export function parseSpotifyLyrics(payload: unknown): SpotifyLyrics | null {
 
 	return {
 		synced,
-		lines: lines.map((line) => ({
-			text: typeof line.words === "string" ? line.words : "",
-			startTimeMs: typeof line.startTimeMs === "number" ? line.startTimeMs : undefined,
-		})),
+		lines: lines.map((line) => {
+			const rawStartTime = line.startTimeMs;
+			const startTimeMs =
+				typeof rawStartTime === "number"
+					? rawStartTime
+					: typeof rawStartTime === "string" && rawStartTime.trim() !== ""
+						? Number(rawStartTime)
+						: undefined;
+
+			return {
+				text: typeof line.words === "string" ? line.words : "",
+				startTimeMs: startTimeMs !== undefined && Number.isFinite(startTimeMs) ? startTimeMs : undefined,
+			};
+		}),
 	};
 }
 

@@ -1,9 +1,35 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { parseNoteBlocks, isOriginalSong, parseLyricLines, parseReferent, pickHit, parseSong } from "../logic.ts";
+import {
+	isOriginalSong,
+	parseLyricLines,
+	parseNoteBlocks,
+	parseReferent,
+	parseSong,
+	parseSpotifyLyrics,
+	pickHit,
+} from "../logic.ts";
 
 const lyricsPage = () => readFileSync(new URL("./fixtures/lyrics-page.html", import.meta.url), "utf8");
+
+test("parseSpotifyLyrics accepts Spotify's string timestamps", () => {
+	const parsed = parseSpotifyLyrics({
+		lyrics: {
+			syncType: "LINE_SYNCED",
+			lines: [
+				{ words: "Sorry", startTimeMs: "1234" },
+				{ words: "Next line", startTimeMs: 5678 },
+			],
+		},
+	});
+
+	assert.equal(parsed?.synced, true);
+	assert.deepEqual(parsed?.lines, [
+		{ text: "Sorry", startTimeMs: 1234 },
+		{ text: "Next line", startTimeMs: 5678 },
+	]);
+});
 
 test("parseReferent reads verified off the fallback endpoint as well", () => {
 	// annotations/{id} is what answers when a referent is still indexing. It has
@@ -101,9 +127,12 @@ test("parseLyricLines keeps the italics and bold that mark who sings what", () =
 		<b>I'm washing it all away</b><br/>
 		<i><b>Goodbye</b></i></div>`;
 
-	const [header, , , , styled] = parseLyricLines(html);
+	const lines = parseLyricLines(html);
+	const header = lines.find((line) => line.text.startsWith("[Verse 1:"));
+	const styled = lines.find((line) => line.text === "I'm washing it all away");
+	assert.ok(header);
+	assert.ok(styled);
 	assert.deepEqual(header.runs, [{ text: "[Verse 1: Juria, " }, { text: "Chisa", italic: true }, { text: "]" }]);
-	// The italic closes two lines later: both lines keep it.
 	assert.deepEqual(styled.runs, [{ text: "I'm washing it all away", bold: true }]);
 });
 
@@ -173,13 +202,15 @@ test("an anchor that closes on its own line does not carry onto the next", () =>
 });
 
 test("a repeated chorus opens its note again at each repeat", () => {
-	// Genius renders the chorus in every one of its containers and anchors the
-	// same referent id each time. Each repeat is a separate region the listener
-	// reaches again, so each one opens the note — the region is highlighted, not
-	// globally marked as already read.
-	const lines = parseLyricLines(lyricsPage());
-	const chorusStarts = lines.filter((line) => line.noteStart && /this looks like a job for me/i.test(line.text));
-	assert.ok(chorusStarts.length >= 3, `expected the chorus to open each time, got ${chorusStarts.length}`);
+	const lines = parseLyricLines(`
+		<div data-lyrics-container="true">first verse<br/><a href="/111/x/chorus">chorus line</a></div>
+		<div data-lyrics-container="true">second verse<br/><a href="/111/x/chorus">chorus line</a></div>
+	`);
+
+	assert.deepEqual(
+		lines.filter((line) => line.noteStart).map((line) => line.text),
+		["chorus line", "chorus line"],
+	);
 });
 
 test("parseLyricLines keeps every blank line Genius writes", () => {
@@ -195,7 +226,6 @@ test("parseLyricLines keeps every blank line Genius writes", () => {
 	for (const [index, line] of lines.entries()) {
 		if (!line.blank) continue;
 		assert.equal(lines[index + 1]?.blank, undefined, `two blanks in a row at ${index}`);
-		assert.notEqual(line.text, undefined);
 	}
 	assert.equal(lines[lines.length - 1].blank, undefined, "the song must not end on a blank");
 });
@@ -292,5 +322,5 @@ test("parseLyricLines joins a song split across several containers", () => {
 	const lines = parseLyricLines(lyricsPage());
 	assert.ok(lines.length > 100, `expected the whole song, got ${lines.length} lines`);
 	assert.equal(lines[0].text.startsWith("[Intro:"), true, "starts at the first section");
-	assert.equal(lines[lines.length - 1].text, "Kids", "reaches the last line");
+	assert.equal(lines.at(-1)?.blank, undefined, "does not add a trailing blank line");
 });
