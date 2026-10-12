@@ -87,7 +87,9 @@
 	opacity: 0.75;
 	cursor: default;
 	border-radius: 5px;
-	transition: opacity 120ms ease, background 120ms ease;
+	transition:
+		opacity 120ms ease,
+		background 120ms ease;
 }
 
 .gl-line:disabled {
@@ -120,7 +122,9 @@
 	margin: 0 -4px;
 	border-radius: 4px;
 	cursor: default;
-	transition: background 120ms ease, color 120ms ease;
+	transition:
+		background 120ms ease,
+		color 120ms ease;
 }
 
 /* Set explicitly rather than left to the browser defaults: the client sets a
@@ -365,7 +369,9 @@
 	font: inherit;
 	font-size: 0.86em;
 	cursor: pointer;
-	transition: border-color 120ms ease, color 120ms ease;
+	transition:
+		border-color 120ms ease,
+		color 120ms ease;
 }
 
 .gl-retry:hover {

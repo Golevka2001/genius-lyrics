@@ -33,9 +33,9 @@ The module never writes this configuration itself — it belongs to the user.
 
 Two Genius endpoints both look like lyrics, and only one is:
 
-| Source | What it holds |
-| --- | --- |
-| `/api/songs/{id}` → `description.dom` | editorial prose about the song, not lyrics |
+| Source                                      | What it holds                                                                    |
+| ------------------------------------------- | -------------------------------------------------------------------------------- |
+| `/api/songs/{id}` → `description.dom`       | editorial prose about the song, not lyrics                                       |
 | the rendered page → `data-lyrics-container` | the lyric lines, each annotated fragment wrapped in `<a href="/<referentId>/…">` |
 
 Spotify's `color-lyrics` is fetched separately and used only for the timing axis;
@@ -57,8 +57,11 @@ keeps the caches from growing for as long as the client stays open.
 
 ```bash
 bun install       # install dependencies
-bun run check     # tsc + module standard audit
-bun test          # unit tests for the pure logic
+bun run check     # tsc + oxlint + module standard audit
+bun run test      # unit tests for the pure logic
+bun run lint      # oxlint
+bun run fmt       # oxfmt, in place
+bun run fmt:check # oxfmt, report only
 bun run build     # bundle into dist/genius-lyrics@<version>
 bun run dev       # watch, rebuild and hot-push into a running client
 ```

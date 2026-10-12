@@ -1,0 +1,37 @@
+name: Release
+
+on:
+    release:
+        types: [published]
+    workflow_dispatch:
+        inputs:
+            release-tag:
+                description: Release tag to build and submit
+                required: true
+                type: string
+
+jobs:
+    build:
+        uses: spicetify/actions/.github/workflows/build-module.yml@v1
+        permissions:
+            contents: write
+            id-token: write
+            attestations: write
+        with:
+            release-tag: ${{ inputs.release-tag || github.event.release.tag_name }}
+
+    submit:
+        needs: build
+        runs-on: ubuntu-latest
+        steps:
+            - name: Download the built zip
+              uses: actions/download-artifact@v8
+              with:
+                  name: ${{ needs.build.outputs.zip }}
+
+            - name: Submit to the store
+              uses: spicetify/actions/publish@v1
+              with:
+                  zip: ${{ needs.build.outputs.zip }}
+                  artifact: ${{ needs.build.outputs.artifact }}
+                  token: ${{ secrets.SPICETIFY_SUBMIT_TOKEN }}

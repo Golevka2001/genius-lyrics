@@ -1,29 +1,33 @@
-/*
- * Sidebar lyrics panel with annotation popovers.
- *
- * Shaped after lyrics-plus: the lines are listed, and a line carrying notes is
- * clickable so its annotation opens next to it. The difference is where the
- * lines come from — Genius, because Spotify's own lyrics carry no anchors to
- * attach notes to.
- */
+/** Registers and renders the Genius Lyrics page. */
 
 import type { ModuleRuntimeContext } from "/modules/stdlib/mod.ts";
 import { NavLink, React, client, createRegistrar, warn } from "/modules/stdlib/mod.ts";
-import { detectFailure, fetchAnnotations, fetchLyrics, fetchOriginalSong, fetchSpotifyLyrics, searchSong } from "./genius.ts";
+import {
+	detectFailure,
+	fetchAnnotations,
+	fetchLyrics,
+	fetchOriginalSong,
+	fetchSpotifyLyrics,
+	searchSong,
+} from "./genius.ts";
 import type { Annotation, NoteBlock, NoteSpan } from "./logic.ts";
 import { createPanel, type TrackItem } from "./panel.ts";
 import { activeLineIndex, hasTimeline, type LineView } from "./view.ts";
 
 const h = React.createElement;
 
-// Genius' own glyph beside a note's vote count. It is a 24-grid drawing, so the
-// viewBox travels with it rather than the client's.
-const THUMB_UP =
+const GENIUS_ICON =
+	'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 1000 1000" fill="currentColor">' +
+	'<path d="M264 259h60l18 2 1 10 1 2v55c0 15 0 15-5 22l-5 5a220 220 0 0 0-43 219l1 8-5 4q-7-1-11-5l-2-2q-25-18-45-44l-2-3q-38-54-38-120v-2q0-52 25-98l1-2c9-16 29-51 49-51M510 258h54q5 2 8 6l2 3c18 22 41 60 39 89q-2 4-5 4h-17l-3 1h-6q-2 5-2 9v49a82 82 0 0 1-20 56l-2 3a78 78 0 0 1-56 24q-34 1-58-23a75 75 0 0 1-22-51q0-3 3-5l8-1q31-6 51-30 15-21 15-46v-77l3-9z"/>' +
+	'<path d="M740 263c7 1 12 8 16 13l2 3c42 47 68 107 78 169l1 3q8 51-1 102l-1 3q-15 91-73 162l-1 2-24 25-1 1-25 22q-23 19-49 33l-2 1a344 344 0 0 1-323 1l-2-1a328 328 0 0 1-70-50l-3-3q-3-4-2-9l3-3q10 1 20 5a360 360 0 0 0 352-69l2-2 40-41 3-4a357 357 0 0 0 57-345l-1-4-1-3v-9q2-2 5-2"/>' +
+	"</svg>";
+
+const THUMB_UP_ICON =
 	'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" height="16" width="16" fill="currentColor">' +
 	'<path d="M16.52 21.29H6V8.5l.84-.13a3.45 3.45 0 0 0 1.82-1.09 13.16 13.16 0 0 0 .82-1.85c1.06-2.69 2-4.78 3.52-5.31a2.06 2.06 0 0 1 1.74.17c2.5 1.42 1 5 .16 6.95-.11.27-.25.6-.31.77a.78.78 0 0 0 .6.36h4.1a2.29 2.29 0 0 1 2.37 2.37c0 .82-1.59 5.4-2.92 9.09a2.39 2.39 0 0 1-2.22 1.46zm-8.52-2h8.56a.48.48 0 0 0 .31-.17c1.31-3.65 2.73-7.82 2.79-8.44 0-.22-.1-.32-.37-.32h-4.1A2.61 2.61 0 0 1 12.54 8 4.29 4.29 0 0 1 13 6.46c.45-1.06 1.64-3.89.7-4.43-.52 0-1.3 1.4-2.38 4.14a10 10 0 0 1-1.13 2.38A5.28 5.28 0 0 1 8 10.11zM0 8.4h4.86v12.96H0z"/>' +
 	"</svg>";
 
-/** Node of the highlighted line, kept so it can be scrolled into view. */
+// Used to scroll the active lyric line into view.
 let activeRef: { current: HTMLElement | null } | { current: null } = { current: null };
 
 const panel = createPanel({
@@ -36,19 +40,16 @@ const panel = createPanel({
 	warn,
 });
 
-// Links inside a note carry meaning — "confirmed" pointing at a clip is the
-// evidence for the sentence it sits in — so they come back as anchors.
-const Span = ({ span }: { span: NoteSpan }) => {
+// Annotation text keeps links, quotes, and images as separate renderable blocks.
+function Span({ span }: { span: NoteSpan }) {
 	const href = "href" in span ? span.href : undefined;
 	if (!href) return span.text;
 
-	// No distinction between Genius' own pages and everything else: the module is
-	// not on genius.com, so every link is simply somewhere else to go.
 	return h("a", { className: "gl-link", href, target: "_blank", rel: "noopener noreferrer" }, span.text);
-};
+}
 
-const SpanLine = ({ spans }: { spans: NoteSpan[] }) =>
-	h(
+function SpanLine({ spans }: { spans: NoteSpan[] }) {
+	return h(
 		"p",
 		{ className: "gl-note-text" },
 		spans.map((span, index) =>
@@ -57,9 +58,9 @@ const SpanLine = ({ spans }: { spans: NoteSpan[] }) =>
 				: h(Span, { key: `${index}-${span.text.slice(0, 8)}`, span }),
 		),
 	);
+}
 
-// `fallback` covers a note that arrived as flat text with no DOM behind it.
-const NoteBody = ({ blocks, fallback }: { blocks: NoteBlock[]; fallback: string }) => {
+function NoteBody({ blocks, fallback }: { blocks: NoteBlock[]; fallback: string }) {
 	if (blocks.length === 0) {
 		return h("div", { className: "gl-note-text", children: fallback });
 	}
@@ -82,32 +83,29 @@ const NoteBody = ({ blocks, fallback }: { blocks: NoteBlock[]; fallback: string 
 			return h("img", { key, className: "gl-note-image", src: block.src, alt: "", loading: "lazy" });
 		}),
 	);
-};
+}
 
-const NoteCard = ({ note }: { note: Annotation }) =>
-	h(
+function NoteCard({ note }: { note: Annotation }) {
+	return h(
 		"div",
 		{ className: "gl-note" },
-		// The vote count is the only meta Genius shows on a note.
 		h(NoteBody, { blocks: note.blocks, fallback: note.text }),
 		note.votes !== undefined
 			? h(
 					"div",
 					{ className: "gl-note-meta" },
-					h(
-						"span",
-						{
-							className: "gl-vote-icon",
-							dangerouslySetInnerHTML: { __html: THUMB_UP },
-							"aria-hidden": "true",
-						},
-					),
+					h("span", {
+						className: "gl-vote-icon",
+						dangerouslySetInnerHTML: { __html: THUMB_UP_ICON },
+						"aria-hidden": "true",
+					}),
 					h("span", { children: note.votes > 0 ? `+${note.votes}` : "0" }),
 				)
 			: null,
 	);
+}
 
-const Line = ({
+function Line({
 	view,
 	isOpen,
 	isActive,
@@ -118,22 +116,17 @@ const Line = ({
 	view: LineView;
 	isOpen: boolean;
 	isActive: boolean;
-	/** True when the pointer is over any line of this note's span. */
 	hovered: boolean;
 	onHover: (ids: string[] | null) => void;
 	onToggle: () => void;
-}) =>
-	h(
+}) {
+	// The clickable area stays on the lyric text so selecting the row still works.
+	return h(
 		"div",
 		{
 			className: [
 				"gl-line-wrap",
-				// Hovering any line of a span lights the whole run. Driven from the
-				// panel rather than CSS: a `:has()` test on the list would light
-				// every annotated line, and a sibling combinator reaches only the
-				// line below.
 				view.annotated ? (view.noteStart === false ? " gl-note-cont" : " gl-note-start") : "",
-				// Genius tints an artist-written note yellow; the rest are alike.
 				view.verified ? " gl-note-verified" : "",
 				view.blank ? " gl-blank" : "",
 				hovered && view.annotated ? " gl-note-hover" : "",
@@ -142,10 +135,6 @@ const Line = ({
 				.join(" "),
 			ref: isActive ? activeRef : undefined,
 		},
-		// A div rather than a button: both inherit the page's `user-select: text`,
-		// so the role and tab stop below are what make the row keyboard reachable.
-		// The pointer handlers sit on the text, since Genius marks the words and a
-		// full-width hit area would light up with the cursor nowhere near the lyric.
 		h(
 			"div",
 			{
@@ -161,14 +150,11 @@ const Line = ({
 			h("span", {
 				className: "gl-text",
 				onClick: view.annotated ? onToggle : undefined,
-				// The line's own anchors, not the notes that landed: the span is known
-				// from the page, so it highlights while its note is still in flight.
 				onMouseEnter: view.annotated ? () => onHover(view.referentIds) : undefined,
 				onMouseLeave: view.annotated ? () => onHover(null) : undefined,
 				title: view.annotated ? "Show annotation" : undefined,
 				children: view.runs
 					? view.runs.map((run, index) => {
-							// Spelled out so the class-name test can see them.
 							const classes = [
 								"gl-emph",
 								...(run.italic ? ["gl-emph-italic"] : []),
@@ -187,35 +173,38 @@ const Line = ({
 			? h(
 					"div",
 					{ className: "gl-pop" },
-					// A line can be clickable before its note exists, so an empty
-					// card here would read as "this line has nothing to say" rather
-					// than "it has not arrived yet".
 					!view.resolved
-						? h("div", { className: "gl-note" }, h("div", { className: "gl-note-text", children: "Loading note…" }))
+						? h(
+								"div",
+								{ className: "gl-note" },
+								h("div", { className: "gl-note-text", children: "Loading note…" }),
+							)
 						: view.notes.length > 0
 							? view.notes.map((note, index) => h(NoteCard, { key: `${note.referentId}-${index}`, note }))
-							: h("div", { className: "gl-note" }, h("div", { className: "gl-note-text", children: "No note here." })),
+							: h(
+									"div",
+									{ className: "gl-note" },
+									h("div", { className: "gl-note-text", children: "No note here." }),
+								),
 				)
 			: null,
 	);
+}
 
-// The panel owns the state and the tree only reads it, so a notification has to
-// come back through React: song changes and arriving notes are not renders.
-const usePanel = () => {
+function usePanel() {
 	const [, force] = React.useReducer((count: number) => count + 1, 0);
 
 	React.useEffect(() => panel.subscribe(force), []);
 
 	return panel;
-};
+}
 
-const Panel = () => {
+function Panel() {
 	const panel = usePanel();
 	const state = panel.state;
 	const [position, setPosition] = React.useState<number | null>(null);
 
-	// Follow playback only when Spotify supplied an axis; without one there is
-	// nothing to compare the clock against and every line would flicker in turn.
+	// Spotify timing is optional; without it the panel does not follow playback.
 	const timed = state.track ? hasTimeline(state.track.lines) : false;
 
 	React.useEffect(() => {
@@ -226,19 +215,12 @@ const Panel = () => {
 		const tick = () => setPosition(client.player.getProgress() ?? 0);
 		tick();
 		client.player.addEventListener("onprogress", tick);
-		// Unsubscribed on cleanup rather than left behind: the effect re-runs for
-		// every track, so this listener would otherwise accumulate one copy per
-		// song change.
 		return () => client.player.removeEventListener("onprogress", tick);
 	}, [timed, state.track]);
 
 	const activeIndex =
-		state.state === "ready" && state.track && position !== null
-			? activeLineIndex(state.track.lines, position)
-			: -1;
+		state.state === "ready" && state.track && position !== null ? activeLineIndex(state.track.lines, position) : -1;
 
-	// Keep the current line in view, but only when it actually moved off screen
-	// — scrolling on every tick would fight the user.
 	React.useEffect(() => {
 		if (activeIndex < 0) return;
 		const node = activeRef.current;
@@ -260,15 +242,19 @@ const Panel = () => {
 			"div",
 			{ className: "gl-status gl-status-error" },
 			h("p", { children: reason }),
-			// The proxy hint only applies to the proxy-shaped failures; the reason
-			// above already says what to do about a rate limit or a refusal.
 			/proxy|daemon|CORS/i.test(reason)
 				? h("p", {
 						className: "gl-hint",
-						children: "Genius needs a CORS proxy, and spicetify's hosted one will not carry genius.com. Start the spicetify daemon, then retry.",
+						children:
+							"Genius needs a CORS proxy, and spicetify's hosted one will not carry genius.com. Start the spicetify daemon, then retry.",
 					})
 				: null,
-			h("button", { className: "gl-retry", type: "button", onClick: () => void panel.retry(), children: "Retry" }),
+			h("button", {
+				className: "gl-retry",
+				type: "button",
+				onClick: () => void panel.retry(),
+				children: "Retry",
+			}),
 		);
 	}
 
@@ -279,9 +265,12 @@ const Panel = () => {
 			{ className: "gl-status" },
 			h("p", { children: "No lyrics on Genius for this track." }),
 			track ? h("p", { className: "gl-hint", children: `${track.title} — ${track.artist}` }) : null,
-			// Genius' search is imperfect and a page can fail to render, so the same
-			// answer is worth asking for again rather than taking as final.
-			h("button", { className: "gl-retry", type: "button", onClick: () => void panel.retry(), children: "Retry" }),
+			h("button", {
+				className: "gl-retry",
+				type: "button",
+				onClick: () => void panel.retry(),
+				children: "Retry",
+			}),
 		);
 	}
 
@@ -295,8 +284,6 @@ const Panel = () => {
 			h("div", { className: "gl-artist", children: track.artist }),
 			h("div", {
 				className: "gl-count",
-				// Notes, not the lines they span: one annotation across a
-				// phrase reported seven on a song that has one.
 				children: `${track.annotationCount} ${track.annotationCount === 1 ? "annotation" : "annotations"}`,
 			}),
 		),
@@ -309,26 +296,22 @@ const Panel = () => {
 					view,
 					isActive: view.index === activeIndex,
 					isOpen: panel.openLine === view.index,
-					hovered:
-						panel.hoverIds !== null && view.referentIds.some((id) => panel.hoverIds.includes(id)),
+					hovered: panel.hoverIds !== null && view.referentIds.some((id) => panel.hoverIds.includes(id)),
 					onHover: (ids) => panel.hover(ids),
 					onToggle: () => panel.toggle(view.index),
 				}),
 			),
 		),
 	);
-};
+}
 
-// Data loads here rather than at module load, so opening the page is what
-// triggers a fetch — by then the player holds the track the listener asked for.
-const App = () => {
+function App() {
 	const currentTrack = () => client.player.data?.item as TrackItem | undefined;
 
 	React.useEffect(() => {
 		void panel.load(currentTrack());
 	}, []);
 
-	// The player may not be ready on first render; re-check once it has an item.
 	React.useEffect(() => {
 		if (client.player.data?.item) return;
 		const timer = setInterval(() => {
@@ -346,31 +329,21 @@ const App = () => {
 	}, []);
 
 	return h("div", { className: "gl-page" }, h(Panel, null));
-};
+}
 
 const ROUTE = "/genius-lyrics";
-
-/*
- * Genius' own artwork on its 1000-unit grid. stdlib supplies the 16-grid viewBox
- * and takes only the inner markup, which is why the paths sit in a transform
- * rather than being rescaled by hand: that would add decimals through 617
- * characters of path data and change artwork Genius drew. It crops the wide
- * margin too, so the face fills the icon box.
- *
- * No colours: the client tints nav icons and decides the active state.
- */
-const ICON =
-	'<g fill="currentColor" transform="translate(-3.84 -4.66) scale(0.023)"><path d="M264 259h60l18 2 1 10 1 2v55c0 15 0 15-5 22l-5 5a220 220 0 0 0-43 219l1 8-5 4q-7-1-11-5l-2-2q-25-18-45-44l-2-3q-38-54-38-120v-2q0-52 25-98l1-2c9-16 29-51 49-51M510 258h54q5 2 8 6l2 3c18 22 41 60 39 89q-2 4-5 4h-17l-3 1h-6q-2 5-2 9v49a82 82 0 0 1-20 56l-2 3a78 78 0 0 1-56 24q-34 1-58-23a75 75 0 0 1-22-51q0-3 3-5l8-1q31-6 51-30 15-21 15-46v-77l3-9z"/><path d="M740 263c7 1 12 8 16 13l2 3c42 47 68 107 78 169l1 3q8 51-1 102l-1 3q-15 91-73 162l-1 2-24 25-1 1-25 22q-23 19-49 33l-2 1a344 344 0 0 1-323 1l-2-1a328 328 0 0 1-70-50l-3-3q-3-4-2-9l3-3q10 1 20 5a360 360 0 0 0 352-69l2-2 40-41 3-4a357 357 0 0 0 57-345l-1-4-1-3v-9q2-2 5-2"/></g>';
 
 export default function (ctx: ModuleRuntimeContext) {
 	const registrar = createRegistrar(ctx);
 
-	// An app-shaped module owns a whole page: the client renders the route into its
-	// main view and keeps it mounted, so nothing here has to survive the frequent
-	// re-renders of the surfaces around it.
 	registrar.register(
 		"navlink",
-		React.createElement(NavLink, { localizedApp: "Genius Lyrics", appRoutePath: ROUTE, icon: ICON, activeIcon: ICON }),
+		React.createElement(NavLink, {
+			localizedApp: "Genius Lyrics",
+			appRoutePath: ROUTE,
+			icon: GENIUS_ICON,
+			activeIcon: GENIUS_ICON,
+		}),
 	);
 	registrar.registerRoute(ROUTE, React.createElement(App));
 }

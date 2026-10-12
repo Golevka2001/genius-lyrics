@@ -6,34 +6,20 @@
 		"allowImportingTsExtensions": true,
 		"noEmit": true,
 		"jsx": "react-jsx",
-		"lib": [
-			"ES2024",
-			"ESNext.Disposable",
-			"DOM",
-			"DOM.Iterable"
-		],
+		"lib": ["ES2024", "ESNext.Disposable", "DOM", "DOM.Iterable"],
 		"strict": false,
 		"skipLibCheck": true,
 		"resolveJsonModule": true,
-		"types": [
-			"node"
-		],
+		"types": ["node"],
 		"paths": {
-			"/modules/*": [
-				"./node_modules/@spicetify/kit/vendor/*"
-			]
+			"/modules/*": ["./node_modules/@spicetify/kit/vendor/*"]
 		}
 	},
-	"include": [
-		"**/*"
-	],
+	"include": ["**/*"],
 	"files": [
 		"./node_modules/@spicetify/kit/vendor/shims/remote-modules.d.ts",
 		"./node_modules/@spicetify/kit/vendor/shims/chunks.d.ts",
 		"./node_modules/@spicetify/kit/vendor/shims/spicetify.d.ts"
 	],
-	"exclude": [
-		"node_modules",
-		"dist"
-	]
+	"exclude": ["node_modules", "dist"]
 }

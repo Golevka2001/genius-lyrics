@@ -1,5 +1,5 @@
 // Unit tests for the request cache. cache.ts imports neither the runtime URLs
-// nor the ambient globals, so it loads under plain `bun test` with the fetcher
+// nor the ambient globals, so it loads under plain `node --test` with the fetcher
 // and the clock handed in.
 
 import assert from "node:assert/strict";

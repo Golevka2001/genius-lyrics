@@ -22,7 +22,14 @@ const note = (id: string): Annotation => ({
 	authors: [],
 });
 
-const song: GeniusSong = { id: 1, title: "Creep", url: "https://genius.com/x", annotationCount: 1, translationIds: [], description: "" };
+const song: GeniusSong = {
+	id: 1,
+	title: "Creep",
+	url: "https://genius.com/x",
+	annotationCount: 1,
+	translationIds: [],
+	description: "",
+};
 
 // A transport that records what it was asked and answers from a table of
 // per-key promises, so a test can hold a request open and release it later.
@@ -104,7 +111,9 @@ const track = (name: string): TrackItem => ({ uri: `spotify:track:${name}`, name
 
 /** The artist each search was made for, which the harness records beside the title. */
 const searchedArtists = (calls: string[]) =>
-	calls.filter((call) => call.startsWith("search:")).map((call) => call.slice("search:".length, call.lastIndexOf("|")));
+	calls
+		.filter((call) => call.startsWith("search:"))
+		.map((call) => call.slice("search:".length, call.lastIndexOf("|")));
 
 /** Every note id the panel is currently showing. */
 const shownIds = (panel: ReturnType<typeof createPanel>) =>

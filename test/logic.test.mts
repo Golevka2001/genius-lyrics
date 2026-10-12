@@ -1,17 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import {
-	parseNoteBlocks,
-	domToText,
-	isOriginalSong,
-	parseLyricLines,
-	parseReferent,
-	parseSearchResults,
-	pickHit,
-	parseSong,
-	parseSpotifyLyrics,
-} from "../logic.ts";
+import { parseNoteBlocks, isOriginalSong, parseLyricLines, parseReferent, pickHit, parseSong } from "../logic.ts";
 
 const lyricsPage = () => readFileSync(new URL("./fixtures/lyrics-page.html", import.meta.url), "utf8");
 
@@ -64,8 +54,20 @@ test("pickHit scores each artist separately", () => {
 	// match, which handed the track to whichever version credits the fewest
 	// artists — the Film Version, which carries no annotations at all.
 	const hits = [
-		{ id: 1, title: "Despacito (Remix)", url: "u1", artist: "Luis Fonsi & Daddy Yankee (Ft. Justin Bieber)", annotationCount: 11 },
-		{ id: 2, title: "Despacito (Film Version)", url: "u2", artist: "Luis Fonsi & Daddy Yankee", annotationCount: 0 },
+		{
+			id: 1,
+			title: "Despacito (Remix)",
+			url: "u1",
+			artist: "Luis Fonsi & Daddy Yankee (Ft. Justin Bieber)",
+			annotationCount: 11,
+		},
+		{
+			id: 2,
+			title: "Despacito (Film Version)",
+			url: "u2",
+			artist: "Luis Fonsi & Daddy Yankee",
+			annotationCount: 0,
+		},
 	];
 	assert.equal(pickHit(hits, "Despacito", "Luis Fonsi, Daddy Yankee")?.id, 1);
 });
@@ -75,7 +77,13 @@ test("pickHit tells a remix from the track it remixes", () => {
 	// heavily, so stripping the parenthetical left the two tied and the remix won
 	// a Spotify track that never mentions Justin Bieber.
 	const hits = [
-		{ id: 3057010, title: "Despacito (Remix)", url: "u1", artist: "Luis Fonsi & Daddy Yankee (Ft. Justin Bieber)", annotationCount: 11 },
+		{
+			id: 3057010,
+			title: "Despacito (Remix)",
+			url: "u1",
+			artist: "Luis Fonsi & Daddy Yankee (Ft. Justin Bieber)",
+			annotationCount: 11,
+		},
 		{ id: 2955220, title: "Despacito", url: "u2", artist: "Luis Fonsi & Daddy Yankee", annotationCount: 10 },
 	];
 	// The 2017 single, with no Bieber among its artists.
@@ -94,11 +102,7 @@ test("parseLyricLines keeps the italics and bold that mark who sings what", () =
 		<i><b>Goodbye</b></i></div>`;
 
 	const [header, , , , styled] = parseLyricLines(html);
-	assert.deepEqual(header.runs, [
-		{ text: "[Verse 1: Juria, " },
-		{ text: "Chisa", italic: true },
-		{ text: "]" },
-	]);
+	assert.deepEqual(header.runs, [{ text: "[Verse 1: Juria, " }, { text: "Chisa", italic: true }, { text: "]" }]);
 	// The italic closes two lines later: both lines keep it.
 	assert.deepEqual(styled.runs, [{ text: "I'm washing it all away", bold: true }]);
 });
@@ -127,10 +131,7 @@ test("a note opens once but stays attached across the lines it spans", () => {
 			starts += 1;
 			// The line that opens a note carries the id itself, never an id
 			// inherited from an anchor that started higher up.
-			assert.ok(
-				!/\n/.test(line.text),
-				`opener at ${index} spans more than one line of text`,
-			);
+			assert.ok(!/\n/.test(line.text), `opener at ${index} spans more than one line of text`);
 		} else {
 			// A continuation always follows a line of the same span, looking past the
 			// blank spacer Genius puts before a section header — a spacer is layout,
@@ -177,9 +178,7 @@ test("a repeated chorus opens its note again at each repeat", () => {
 	// reaches again, so each one opens the note — the region is highlighted, not
 	// globally marked as already read.
 	const lines = parseLyricLines(lyricsPage());
-	const chorusStarts = lines.filter(
-		(line) => line.noteStart && /this looks like a job for me/i.test(line.text),
-	);
+	const chorusStarts = lines.filter((line) => line.noteStart && /this looks like a job for me/i.test(line.text));
 	assert.ok(chorusStarts.length >= 3, `expected the chorus to open each time, got ${chorusStarts.length}`);
 });
 
@@ -205,8 +204,12 @@ test("isOriginalSong tells an original from a translation", () => {
 	// Genius lists a translation among its own siblings and leaves the original
 	// out, which is how a Swedish page of Despacito is told apart from the
 	// Spanish one without reading either title.
-	const original = parseSong({ response: { song: { id: 3057010, translation_songs: [{ id: 3083456 }, { id: 3067667 }] } } });
-	const swedish = parseSong({ response: { song: { id: 3083456, translation_songs: [{ id: 3057010 }, { id: 3083456 }] } } });
+	const original = parseSong({
+		response: { song: { id: 3057010, translation_songs: [{ id: 3083456 }, { id: 3067667 }] } },
+	});
+	const swedish = parseSong({
+		response: { song: { id: 3083456, translation_songs: [{ id: 3057010 }, { id: 3083456 }] } },
+	});
 
 	assert.ok(original);
 	assert.ok(swedish);
@@ -223,7 +226,12 @@ test("parseNoteBlocks keeps paragraphs, quotes and images apart", () => {
 			{ tag: "p", children: ["This refrain interpolates Malcolm McLaren’s track."] },
 			{
 				tag: "blockquote",
-				children: [{ tag: "p", children: ["Two buffalo gals go around the outside", { tag: "br" }, "Round the outside"] }],
+				children: [
+					{
+						tag: "p",
+						children: ["Two buffalo gals go around the outside", { tag: "br" }, "Round the outside"],
+					},
+				],
 			},
 			{ tag: "p", children: ["And it is sampled more than 100 times."] },
 			{ tag: "img", attributes: { src: "https://images.rapgenius.com/a.jpg", alt: "" } },
@@ -249,9 +257,17 @@ test("parseNoteBlocks keeps inline links inside their sentence", () => {
 				tag: "p",
 				children: [
 					"released under ",
-					{ tag: "a", attributes: { href: "https://genius.com/artists/Obie-trice" }, children: ["Obie Trice"] },
+					{
+						tag: "a",
+						attributes: { href: "https://genius.com/artists/Obie-trice" },
+						children: ["Obie Trice"],
+					},
 					"’s label ",
-					{ tag: "a", attributes: { href: "https://genius.com/artists/Shady-records" }, children: ["Shady Records"] },
+					{
+						tag: "a",
+						attributes: { href: "https://genius.com/artists/Shady-records" },
+						children: ["Shady Records"],
+					},
 					".",
 				],
 			},
