@@ -212,11 +212,16 @@ function Panel() {
 			setPosition(null);
 			return;
 		}
-		const tick = () => setPosition(client.player.getProgress() ?? 0);
+		// getProgress() extrapolates from wall-clock time, which races ahead while the player state
+		// is frozen. positionAsOfTimestamp is the real position, and still follows seeks.
+		const tick = () => {
+			const state = client.player.data;
+			setPosition(state?.isBuffering ? state.positionAsOfTimestamp : (client.player.getProgress() ?? 0));
+		};
 		tick();
 		client.player.addEventListener("onprogress", tick);
 		return () => client.player.removeEventListener("onprogress", tick);
-	}, [timed, state.track]);
+	}, [timed]);
 
 	const activeIndex =
 		state.state === "ready" && state.track && position !== null ? activeLineIndex(state.track.lines, position) : -1;
@@ -228,7 +233,6 @@ function Panel() {
 		const scroller = node.closest<HTMLElement>(".gl-page");
 		if (!scroller) return;
 		const offset = node.offsetTop - scroller.clientHeight / 2;
-		if (Math.abs(scroller.scrollTop - offset) < scroller.clientHeight / 3) return;
 		scroller.scrollTo({ top: Math.max(0, offset), behavior: "smooth" });
 	}, [activeIndex]);
 
