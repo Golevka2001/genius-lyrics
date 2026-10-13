@@ -95,23 +95,51 @@ function readDom(value: unknown): string {
 	return domToText((value as { dom?: GeniusDomNode }).dom);
 }
 
+export type NoteAuthor = {
+	name: string;
+	avatar?: string;
+};
+
+export type NoteStatus = "verified" | "unreviewed" | "accepted";
+
 export type Annotation = {
 	referentId: string;
 	fragment: string;
 	text: string;
 	blocks: NoteBlock[];
 	verified: boolean;
+	status: NoteStatus;
 	source: "referent" | "annotation" | "none";
-	authors: string[];
+	authors: NoteAuthor[];
 	votes?: number;
 };
+
+function parseAuthors(...lists: Array<Array<Record<string, unknown>> | undefined>): NoteAuthor[] {
+	const credited = lists.flatMap((list) => list ?? []);
+
+	return credited
+		.map((entry): NoteAuthor | null => {
+			const user = (entry?.user ?? {}) as Record<string, unknown>;
+			const name = user.name;
+			if (typeof name !== "string" || name.length === 0) return null;
+
+			const avatar = (user.avatar ?? {}) as Record<string, unknown>;
+			const small = (avatar.small ?? {}) as Record<string, unknown>;
+
+			return {
+				name,
+				avatar: typeof small.url === "string" ? small.url : undefined,
+			};
+		})
+		.filter((author): author is NoteAuthor => author !== null);
+}
 
 // Prefer the referent response, then fall back to the older annotation endpoint.
 export function parseReferent(payload: unknown, referentId: string): Annotation {
 	const response = (payload as { response?: Record<string, unknown> })?.response ?? {};
 	const referent = (response.referent ?? {}) as Record<string, unknown>;
 	const fragment = typeof referent.fragment === "string" ? referent.fragment : "";
-	const verified = referent.classification === "verified";
+	const classification = typeof referent.classification === "string" ? referent.classification : "";
 
 	const annotation = (response.annotation ?? {}) as Record<string, unknown>;
 	const referentAnnotations = (referent.annotations ?? []) as Array<Record<string, unknown>>;
@@ -127,13 +155,15 @@ export function parseReferent(payload: unknown, referentId: string): Annotation 
 	}
 	const text = readDom(best.body);
 
-	const credited = [
-		...((best.authors as Array<Record<string, unknown>> | undefined) ?? []),
-		...((annotation.authors as Array<Record<string, unknown>> | undefined) ?? []),
-	];
-	const authors = credited
-		.map((entry) => (entry?.user as Record<string, unknown> | undefined)?.name)
-		.filter((name): name is string => typeof name === "string" && name.length > 0);
+	const state = typeof best.state === "string" ? best.state : "";
+	const verified = classification === "verified" || state === "verified" || best.verified === true;
+	const unreviewed = classification === "unreviewed" || state === "pending";
+	const status: NoteStatus = verified ? "verified" : unreviewed ? "unreviewed" : "accepted";
+
+	const authors = parseAuthors(
+		best.authors as Array<Record<string, unknown>> | undefined,
+		annotation.authors as Array<Record<string, unknown>> | undefined,
+	);
 
 	const votes = best.votes_total ?? annotation.votes_total;
 
@@ -142,7 +172,8 @@ export function parseReferent(payload: unknown, referentId: string): Annotation 
 		fragment,
 		text,
 		blocks: text ? parseNoteBlocks(bodyOf(best) ?? bodyOf(annotation)) : [],
-		verified: verified || best.verified === true,
+		verified,
+		status,
 		source,
 		authors,
 		votes: typeof votes === "number" ? votes : undefined,

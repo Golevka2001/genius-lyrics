@@ -18,6 +18,7 @@ const note = (id: string): Annotation => ({
 	text: `a note about ${id}`,
 	blocks: [],
 	verified: false,
+	status: "accepted",
 	source: "referent",
 	authors: [],
 });

@@ -8,6 +8,7 @@ const note = (id: string, text: string, verified = false): Annotation => ({
 	fragment: id,
 	text,
 	verified,
+	status: verified ? "verified" : "accepted",
 	source: "referent",
 	authors: [],
 	blocks: [],

@@ -41,7 +41,7 @@ Use the versioned directory generated in `dist/` if the package version changes.
 
 ## Planned
 
-- [ ] `Verified`/`Reviewed`/`Unreviewed` annotation labels.
+- [x] `Verified`/`Unreviewed` annotation labels, with the author's avatar and name.
 - [ ] Comments, song bio, song Q&A, and external links.
 - [ ] Annotation and lyrics translations.
 - [x] Live annotation count while annotations are loading.

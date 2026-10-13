@@ -85,10 +85,48 @@ function NoteBody({ blocks, fallback }: { blocks: NoteBlock[]; fallback: string 
 	);
 }
 
+function NoteAuthors({ note }: { note: Annotation }) {
+	if (note.authors.length === 0) return null;
+
+	return h(
+		"div",
+		{ className: "gl-note-authors" },
+		note.authors.map((author, index) =>
+			h(
+				"div",
+				{ key: `${author.name}-${index}`, className: "gl-note-author" },
+				author.avatar
+					? h("img", { className: "gl-note-avatar", src: author.avatar, alt: "", loading: "lazy" })
+					: h("span", { className: "gl-note-avatar", "aria-hidden": "true" }),
+				h("span", { className: "gl-note-author-name", children: author.name }),
+			),
+		),
+	);
+}
+
+function NoteBadge({ status }: { status: Annotation["status"] }) {
+	if (status === "accepted") return null;
+
+	return h("span", {
+		className: status === "unreviewed" ? "gl-note-badge gl-note-badge-unreviewed" : "gl-note-badge",
+		children: status === "verified" ? "Verified" : "Unreviewed",
+	});
+}
+
 function NoteCard({ note }: { note: Annotation }) {
+	const bylined = note.status === "verified";
+
 	return h(
 		"div",
 		{ className: "gl-note" },
+		note.status !== "accepted"
+			? h(
+					"div",
+					{ className: "gl-note-head" },
+					h(NoteBadge, { status: note.status }),
+					bylined ? h(NoteAuthors, { note }) : null,
+				)
+			: null,
 		h(NoteBody, { blocks: note.blocks, fallback: note.text }),
 		note.votes !== undefined
 			? h(
@@ -140,7 +178,7 @@ function Line({
 			{
 				role: view.annotated ? "button" : undefined,
 				tabIndex: view.annotated ? 0 : undefined,
-				className: `gl-line${isOpen ? " gl-line-open" : ""}${isActive ? " gl-line-active" : ""}`,
+				className: `gl-line${isActive ? " gl-line-active" : ""}`,
 				onKeyDown: (event: KeyboardEvent) => {
 					if (event.key !== "Enter" && event.key !== " ") return;
 					event.preventDefault();
@@ -294,17 +332,22 @@ function Panel() {
 		h(
 			"div",
 			{ className: "gl-lines" },
-			track.lines.map((view) =>
-				h(Line, {
+			track.lines.map((view) => {
+				const openIds = panel.openLine !== null ? track.lines[panel.openLine]?.referentIds : undefined;
+				const opened = openIds !== undefined && view.referentIds.some((id) => openIds.includes(id));
+
+				return h(Line, {
 					key: view.index,
 					view,
 					isActive: view.index === activeIndex,
 					isOpen: panel.openLine === view.index,
-					hovered: panel.hoverIds !== null && view.referentIds.some((id) => panel.hoverIds.includes(id)),
+					hovered:
+						opened ||
+						(panel.hoverIds !== null && view.referentIds.some((id) => panel.hoverIds.includes(id))),
 					onHover: (ids) => panel.hover(ids),
 					onToggle: () => panel.toggle(view.index),
-				}),
-			),
+				});
+			}),
 		),
 	);
 }
