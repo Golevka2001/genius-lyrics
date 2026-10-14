@@ -347,10 +347,9 @@ const MARKUP_EDGE = /<a\b[^>]*href="\/(\d{3,})\/[^"]*"[^>]*>|<\/a>|<(\/?)(i|em|b
 
 type OpenMarks = { ids: string[]; emphasis: Set<string> };
 
-function sameIds(left: string[] | undefined, right: string[]): boolean {
-	return left === undefined
-		? right.length === 0
-		: left.length === right.length && left.every((id, index) => id === right[index]);
+export function sameIds(left: string[] | undefined, right: string[] | undefined): boolean {
+	if (left === undefined || right === undefined) return left === right;
+	return left.length === right.length && left.every((id, index) => id === right[index]);
 }
 
 function trimRuns(runs: LyricRun[]): LyricRun[] {

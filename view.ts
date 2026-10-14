@@ -1,12 +1,19 @@
 /** Builds render-ready track state outside the React tree. */
 
 import type { Annotation, LyricLine, LyricRun } from "./logic.ts";
-import { normalize } from "./logic.ts";
+import { normalize, sameIds } from "./logic.ts";
+
+export type LineChunk = {
+	runs: LyricRun[];
+	referentIds?: string[];
+	carriesUp?: boolean;
+	carriesDown?: boolean;
+};
 
 export type LineView = {
 	index: number;
 	text: string;
-	runs?: LyricRun[];
+	chunks?: LineChunk[];
 	notes: Annotation[];
 	referentIds: string[];
 	annotated: boolean;
@@ -172,6 +179,32 @@ export function applyTiming(lines: LyricLine[], timing?: Array<{ text: string; s
 	return result;
 }
 
+// One note is one box, so runs that share an anchor join back into a single
+// chunk however emphasis or a second anchor split them apart. The space between
+// two anchors of one note goes with them rather than cutting the box in two.
+function groupRuns(runs: LyricRun[]): LineChunk[] {
+	const chunks: LineChunk[] = [];
+
+	for (const [index, run] of runs.entries()) {
+		const blank = run.referentIds === undefined && run.text.trim().length === 0;
+		const owner = blank ? (runs[index + 1] ?? run) : run;
+		const last = chunks[chunks.length - 1];
+
+		if (last && sameIds(last.referentIds, owner.referentIds)) {
+			last.runs.push(run);
+			continue;
+		}
+
+		chunks.push({
+			runs: [run],
+			referentIds: run.referentIds,
+			...(run.referentIds ? { carriesUp: run.carriesUp, carriesDown: run.carriesDown } : {}),
+		});
+	}
+
+	return chunks;
+}
+
 export function buildTrackView({ title, artist, lines = [], notes = new Map(), settled = new Set() }: BuildInput) {
 	const views: LineView[] = lines.map((line, index) => {
 		// Keep every note of each referent, deduped by Genius' id.
@@ -185,7 +218,7 @@ export function buildTrackView({ title, artist, lines = [], notes = new Map(), s
 		return {
 			index,
 			text: line.text,
-			runs: line.runs,
+			chunks: line.runs ? groupRuns(line.runs) : undefined,
 			notes: unique,
 			referentIds: line.referentIds,
 			annotated,

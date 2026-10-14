@@ -380,6 +380,88 @@ test("an anchor whose note turns out to be empty stops being annotated", () => {
 	assert.equal(track.annotationCount, 1, "and there is one note behind it");
 });
 
+test("a note split by emphasis still reads as one marked box", () => {
+	// Genius marks who sings what inside the very words it anchors, so one
+	// anchor arrives as several runs. Washing each of them drew the note as a row
+	// of separate boxes with a corner between. Shape taken from Without Me.
+	const chunks = buildTrackView({
+		title: "t",
+		artist: "a",
+		lines: [
+			{
+				text: "Woo (Ooh)",
+				referentIds: ["25705"],
+				runs: [
+					{ text: "Woo (", referentIds: ["25705"] },
+					{ text: "Ooh", bold: true, referentIds: ["25705"] },
+					{ text: ")", referentIds: ["25705"] },
+				],
+			},
+		],
+		notes: new Map([["25705", [note("25705", "about two trailer-park girls")]]]),
+		settled: new Set(["25705"]),
+	}).lines[0].chunks;
+
+	assert.equal(chunks?.length, 1, "one anchor is one box, however it is styled");
+	assert.deepEqual(
+		chunks?.[0].runs.map((run) => run.text),
+		["Woo (", "Ooh", ")"],
+	);
+	assert.deepEqual(chunks?.[0].referentIds, ["25705"]);
+});
+
+test("a note keeps one box across its own anchors, and one box per note", () => {
+	// Genius can anchor the same referent in two places on a line, and the space
+	// between them belongs to the note rather than cutting its box in two.
+	const chunks = buildTrackView({
+		title: "t",
+		artist: "a",
+		lines: [
+			{
+				text: "let me revel and bask",
+				referentIds: ["1"],
+				runs: [
+					{ text: "let me revel", referentIds: ["1"] },
+					{ text: " " },
+					{ text: "and bask", referentIds: ["1"] },
+				],
+			},
+		],
+		notes: new Map(),
+		settled: new Set(["1"]),
+	}).lines[0].chunks;
+
+	assert.deepEqual(
+		chunks?.map((chunk) => chunk.referentIds),
+		[["1"]],
+		"one note in two places is one box",
+	);
+
+	const split = buildTrackView({
+		title: "t",
+		artist: "a",
+		lines: [
+			{
+				text: "A rebel, so just let me revel",
+				referentIds: ["1", "2"],
+				runs: [
+					{ text: "A rebel,", referentIds: ["1"] },
+					{ text: " " },
+					{ text: "so just let me revel", referentIds: ["2"] },
+				],
+			},
+		],
+		notes: new Map(),
+		settled: new Set(["1", "2"]),
+	}).lines[0].chunks;
+
+	assert.deepEqual(
+		split?.map((chunk) => chunk.referentIds),
+		[["1"], undefined, ["2"]],
+		"though two notes on one line stay two boxes, with the space in neither",
+	);
+});
+
 test("a line keeps every note its referent carries, in order, and tints when any is verified", () => {
 	// One verified note is enough to tint the whole line.
 	const track = buildTrackView({

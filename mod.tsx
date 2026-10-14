@@ -227,44 +227,52 @@ function Line({
 			{ className: `gl-line${isActive ? " gl-line-active" : ""}` },
 			h("span", {
 				className: "gl-text",
-				children: view.runs
-					? view.runs.map((run, index) => {
-							const marked = view.annotated && run.referentIds !== undefined;
-							const classes = [
-								...(run.italic || run.bold
-									? [
-											"gl-emph",
-											...(run.italic ? ["gl-emph-italic"] : []),
-											...(run.bold ? ["gl-emph-bold"] : []),
-										]
-									: []),
-								...(marked
-									? [
-											"gl-anchor",
-											...(run.carriesUp ? ["gl-anchor-up"] : []),
-											...(run.carriesDown ? ["gl-anchor-down"] : []),
-											...(lit(run.referentIds) ? ["gl-anchor-hover"] : []),
-										]
-									: []),
-							];
-							return h("span", {
-								key: index,
-								className: classes.join(" ") || undefined,
-								role: marked ? "button" : undefined,
-								tabIndex: marked ? 0 : undefined,
-								title: marked ? "Show annotation" : undefined,
-								onClick: marked ? onToggle : undefined,
-								onMouseEnter: marked ? () => onHover(run.referentIds) : undefined,
-								onMouseLeave: marked ? () => onHover(null) : undefined,
-								onKeyDown: marked
-									? (event: KeyboardEvent) => {
-											if (event.key !== "Enter" && event.key !== " ") return;
-											event.preventDefault();
-											onToggle();
-										}
-									: undefined,
-								children: run.text,
-							});
+				children: view.chunks
+					? view.chunks.map((chunk, index) => {
+							const marked = view.annotated && chunk.referentIds !== undefined;
+							const classes = marked
+								? [
+										"gl-anchor",
+										...(chunk.carriesUp ? ["gl-anchor-up"] : []),
+										...(chunk.carriesDown ? ["gl-anchor-down"] : []),
+										...(lit(chunk.referentIds) ? ["gl-anchor-hover"] : []),
+									]
+								: [];
+							return h(
+								"span",
+								{
+									key: index,
+									className: classes.join(" ") || undefined,
+									role: marked ? "button" : undefined,
+									tabIndex: marked ? 0 : undefined,
+									title: marked ? "Show annotation" : undefined,
+									onClick: marked ? onToggle : undefined,
+									onMouseEnter: marked ? () => onHover(chunk.referentIds) : undefined,
+									onMouseLeave: marked ? () => onHover(null) : undefined,
+									onKeyDown: marked
+										? (event: KeyboardEvent) => {
+												if (event.key !== "Enter" && event.key !== " ") return;
+												event.preventDefault();
+												onToggle();
+											}
+										: undefined,
+								},
+								chunk.runs.map((run, position) => {
+									const classes =
+										run.italic || run.bold
+											? [
+													"gl-emph",
+													...(run.italic ? ["gl-emph-italic"] : []),
+													...(run.bold ? ["gl-emph-bold"] : []),
+												]
+											: [];
+									return h("span", {
+										key: position,
+										className: classes.join(" ") || undefined,
+										children: run.text,
+									});
+								}),
+							);
 						})
 					: view.text,
 			}),
