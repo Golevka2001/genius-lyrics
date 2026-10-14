@@ -178,6 +178,49 @@ test("pickHit rejects unrelated search results", () => {
 	assert.equal(pickHit(hits, "+ 1", "ØZI"), null);
 });
 
+test("an anchor that starts mid-line marks only the words it covers", () => {
+	// Genius anchors a referent on a phrase out of the middle of a line — here
+	// from "every party in LA" — and tints only that fragment. Marking the line
+	// tied the note to words it never cites. Shape taken from Attention.
+	const html = `<div data-lyrics-container="true">
+		You've been going 'round, going 'round, going 'round <a href="/11800461/x/every-party"><span>every party in LA<br/>'Cause you knew that I, knew that I, knew that I'd be at one, oh</span></a>
+	</div>`;
+	const lines = parseLyricLines(html).filter((line) => !line.blank);
+
+	assert.deepEqual(lines[0].runs, [
+		// The words ahead of the anchor stay outside it, keeping the space between.
+		{ text: "You've been going 'round, going 'round, going 'round " },
+		{ text: "every party in LA", referentIds: ["11800461"], carriesUp: false, carriesDown: true },
+	]);
+	assert.equal(lines[0].noteStart, true, "the note opens here, partway through the line");
+	// The second line lies wholly under the anchor, so its top edge runs straight
+	// on from the line above while the bottom closes with the anchor.
+	assert.deepEqual(lines[1].runs, [
+		{
+			text: "'Cause you knew that I, knew that I, knew that I'd be at one, oh",
+			referentIds: ["11800461"],
+			carriesUp: true,
+			carriesDown: false,
+		},
+	]);
+	assert.equal(lines[1].noteStart, false, "and it only continues the one opened above");
+});
+
+test("an anchor that closes before the next line's words stays on the line above", () => {
+	// The closing tag comes after the break, so reading the markup ahead of it
+	// alone hands the next line a note with no words under it. Shape taken from
+	// XG's WINTER WITHOUT YOU.
+	const html = `<div data-lyrics-container="true">
+		<a href="/111/x/on-the-dl"><span>On the DL I still miss you though<br/></span></a>Looking cute at every party
+	</div>`;
+	const lines = parseLyricLines(html).filter((line) => !line.blank);
+
+	assert.deepEqual(lines[0].referentIds, ["111"]);
+	assert.equal(lines[0].runs?.[0].carriesDown, false, "the note ends with the line it opened on");
+	assert.deepEqual(lines[1].referentIds, [], "and the line it closed before has nothing under it");
+	assert.deepEqual(lines[1].runs, undefined, "so there is nothing to mark there either");
+});
+
 test("parseLyricLines keeps the italics and bold that mark who sings what", () => {
 	// Shape taken from XG's IN THE RAIN.
 	const html = `<div data-lyrics-container="true">[Verse 1: Juria, <i>Chisa</i>]<br/>

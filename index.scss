@@ -148,11 +148,6 @@ $bold: 700;
 	transform: translateX(0);
 }
 
-.gl-note-start .gl-text,
-.gl-note-cont .gl-text {
-	cursor: pointer;
-}
-
 .gl-note-start .gl-line,
 .gl-note-cont .gl-line {
 	opacity: 1;
@@ -160,17 +155,36 @@ $bold: 700;
 
 /* spanning notes */
 
-/* Inline-block so the wash hugs the words; the negative margin joins adjacent
-   lines' tints. */
 .gl-text {
 	display: inline-block;
-	padding: 2px 4px;
-	margin: 0 -4px;
-	border-radius: 4px;
 	cursor: default;
+}
+
+.gl-anchor {
+	display: inline-block;
+	padding: 2px 0;
+	border-radius: 5px;
+	background: tint(11);
+	cursor: pointer;
 	transition:
 		background 120ms ease,
 		color 120ms ease;
+}
+
+/* Round the outer corners of a run so it reads as one block. */
+.gl-anchor-up {
+	border-top-left-radius: 0;
+	border-top-right-radius: 0;
+}
+
+.gl-anchor-down {
+	border-bottom-left-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+/* The run is marked in JS while its note is hovered or open. */
+.gl-anchor-hover {
+	background: tint(20);
 }
 
 /* The client forces a heavy weight inside lyric lines; reset it for plain runs. */
@@ -187,38 +201,12 @@ $bold: 700;
 	font-weight: $bold;
 }
 
-.gl-note-start > .gl-line > .gl-text,
-.gl-note-cont > .gl-line > .gl-text {
-	background: tint(11);
-}
-
-/* Round the outer corners of a run so it reads as one block. */
-.gl-note-start > .gl-line > .gl-text {
-	border-top-left-radius: 5px;
-	border-top-right-radius: 5px;
-}
-
-.gl-note-start:has(+ .gl-note-cont) > .gl-line > .gl-text {
-	border-bottom-left-radius: 0;
-	border-bottom-right-radius: 0;
-}
-
-.gl-note-cont:not(:has(+ .gl-note-cont)) > .gl-line > .gl-text {
-	border-bottom-left-radius: 5px;
-	border-bottom-right-radius: 5px;
-}
-
-/* The run is marked in JS while any line of it is hovered. */
-.gl-note-hover > .gl-line > .gl-text {
-	background: tint(20);
-}
-
-.gl-note-verified > .gl-line > .gl-text {
+.gl-note-verified .gl-anchor {
 	background: rgb(255, 255, 153);
 	color: #000;
 }
 
-.gl-note-verified.gl-note-hover > .gl-line > .gl-text {
+.gl-note-verified .gl-anchor-hover {
 	background: rgb(255, 255, 100);
 	color: #000;
 }

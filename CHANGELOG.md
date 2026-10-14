@@ -15,6 +15,7 @@
 ### Changed
 
 - Hovering or opening a note lights the whole run it spans.
+- Only the words a note covers are marked.
 
 ## [0.1.0] - 2026-10-12
 

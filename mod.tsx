@@ -187,7 +187,8 @@ function Line({
 	isOpen,
 	noteIndex,
 	isActive,
-	hovered,
+	openIds,
+	hoverIds,
 	onHover,
 	onToggle,
 	onShowNote,
@@ -196,7 +197,8 @@ function Line({
 	isOpen: boolean;
 	noteIndex: number;
 	isActive: boolean;
-	hovered: boolean;
+	openIds: string[] | undefined;
+	hoverIds: string[] | null;
 	onHover: (ids: string[] | null) => void;
 	onToggle: () => void;
 	onShowNote: (index: number) => void;
@@ -204,8 +206,9 @@ function Line({
 	const total = view.notes.length;
 	const index = total > 0 ? Math.min(noteIndex, total - 1) : 0;
 	const note = view.notes[index];
+	const lit = (ids: string[] | undefined) =>
+		Boolean(ids?.some((id) => openIds?.includes(id) || hoverIds?.includes(id)));
 
-	// The clickable area stays on the lyric text so selecting the row still works.
 	return h(
 		"div",
 		{
@@ -214,7 +217,6 @@ function Line({
 				view.annotated ? (view.noteStart === false ? " gl-note-cont" : " gl-note-start") : "",
 				view.verified ? " gl-note-verified" : "",
 				view.blank ? " gl-blank" : "",
-				hovered && view.annotated ? " gl-note-hover" : "",
 			]
 				.filter(Boolean)
 				.join(" "),
@@ -222,32 +224,45 @@ function Line({
 		},
 		h(
 			"div",
-			{
-				role: view.annotated ? "button" : undefined,
-				tabIndex: view.annotated ? 0 : undefined,
-				className: `gl-line${isActive ? " gl-line-active" : ""}`,
-				onKeyDown: (event: KeyboardEvent) => {
-					if (event.key !== "Enter" && event.key !== " ") return;
-					event.preventDefault();
-					onToggle();
-				},
-			},
+			{ className: `gl-line${isActive ? " gl-line-active" : ""}` },
 			h("span", {
 				className: "gl-text",
-				onClick: view.annotated ? onToggle : undefined,
-				onMouseEnter: view.annotated ? () => onHover(view.referentIds) : undefined,
-				onMouseLeave: view.annotated ? () => onHover(null) : undefined,
-				title: view.annotated ? "Show annotation" : undefined,
 				children: view.runs
 					? view.runs.map((run, index) => {
+							const marked = view.annotated && run.referentIds !== undefined;
 							const classes = [
-								"gl-emph",
-								...(run.italic ? ["gl-emph-italic"] : []),
-								...(run.bold ? ["gl-emph-bold"] : []),
+								...(run.italic || run.bold
+									? [
+											"gl-emph",
+											...(run.italic ? ["gl-emph-italic"] : []),
+											...(run.bold ? ["gl-emph-bold"] : []),
+										]
+									: []),
+								...(marked
+									? [
+											"gl-anchor",
+											...(run.carriesUp ? ["gl-anchor-up"] : []),
+											...(run.carriesDown ? ["gl-anchor-down"] : []),
+											...(lit(run.referentIds) ? ["gl-anchor-hover"] : []),
+										]
+									: []),
 							];
 							return h("span", {
 								key: index,
-								className: run.italic || run.bold ? classes.join(" ") : undefined,
+								className: classes.join(" ") || undefined,
+								role: marked ? "button" : undefined,
+								tabIndex: marked ? 0 : undefined,
+								title: marked ? "Show annotation" : undefined,
+								onClick: marked ? onToggle : undefined,
+								onMouseEnter: marked ? () => onHover(run.referentIds) : undefined,
+								onMouseLeave: marked ? () => onHover(null) : undefined,
+								onKeyDown: marked
+									? (event: KeyboardEvent) => {
+											if (event.key !== "Enter" && event.key !== " ") return;
+											event.preventDefault();
+											onToggle();
+										}
+									: undefined,
 								children: run.text,
 							});
 						})
@@ -377,18 +392,14 @@ function Panel() {
 			"div",
 			{ className: "gl-lines" },
 			track.lines.map((view) => {
-				const openIds = panel.openLine !== null ? track.lines[panel.openLine]?.referentIds : undefined;
-				const opened = openIds !== undefined && view.referentIds.some((id) => openIds.includes(id));
-
 				return h(Line, {
 					key: view.index,
 					view,
 					isActive: view.index === activeIndex,
 					isOpen: panel.openLine === view.index,
 					noteIndex: panel.openNote,
-					hovered:
-						opened ||
-						(panel.hoverIds !== null && view.referentIds.some((id) => panel.hoverIds.includes(id))),
+					openIds: panel.openLine !== null ? track.lines[panel.openLine]?.referentIds : undefined,
+					hoverIds: panel.hoverIds,
 					onHover: (ids) => panel.hover(ids),
 					onToggle: () => panel.toggle(view.index),
 					onShowNote: (index) => panel.showNote(index),

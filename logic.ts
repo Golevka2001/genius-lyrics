@@ -321,6 +321,9 @@ export type LyricRun = {
 	text: string;
 	italic?: boolean;
 	bold?: boolean;
+	referentIds?: string[];
+	carriesUp?: boolean;
+	carriesDown?: boolean;
 };
 
 // Parse Genius's HTML directly so referent ids stay attached to their source lines.
@@ -331,76 +334,114 @@ function plainText(block: string): string {
 		.trim();
 }
 
-function readRuns(fragment: string, open: Set<string>): { runs: LyricRun[]; close: Set<string> } {
+const REFERENT_HREF = /href="\/(\d{3,})\//g;
+
+const EMPHASIS_TAGS: Record<string, "italic" | "bold"> = {
+	i: "italic",
+	em: "italic",
+	b: "bold",
+	strong: "bold",
+};
+
+const MARKUP_EDGE = /<a\b[^>]*href="\/(\d{3,})\/[^"]*"[^>]*>|<\/a>|<(\/?)(i|em|b|strong)(\s[^>]*)?>/gi;
+
+type OpenMarks = { ids: string[]; emphasis: Set<string> };
+
+function sameIds(left: string[] | undefined, right: string[]): boolean {
+	return left === undefined
+		? right.length === 0
+		: left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
+function trimRuns(runs: LyricRun[]): LyricRun[] {
+	if (runs.length === 0) return runs;
+
+	runs[0].text = runs[0].text.replace(/^\s+/, "");
+	const last = runs[runs.length - 1];
+	last.text = last.text.replace(/\s+$/, "");
+
+	return runs.filter((run) => run.text.length > 0);
+}
+
+type ScannedLine = {
+	runs: LyricRun[];
+	referentIds: string[];
+	noteStart: boolean;
+	closed: string[];
+	close: OpenMarks;
+};
+
+// A referent can open and close inside a line, so anchors are read per run.
+function scanLine(fragment: string, open: OpenMarks): ScannedLine {
 	const runs: LyricRun[] = [];
-	const active = new Set(open);
+	const stack = [...open.ids];
+	const emphasis = new Set(open.emphasis);
+	const closedBeforeText: string[] = [];
+	let spoken = false;
 
 	const push = (raw: string) => {
 		const text = decodeEntities(raw.replace(/<[^>]+>/g, "")).replace(/\*/g, "");
 		if (!text) return;
+		spoken = true;
+
+		const italic = emphasis.has("italic");
+		const bold = emphasis.has("bold");
+		const ids = [...new Set(stack)];
+
 		const last = runs[runs.length - 1];
-		const italic = active.has("italic");
-		const bold = active.has("bold");
-		if (last && !!last.italic === italic && !!last.bold === bold) last.text += text;
-		else runs.push({ text, ...(italic ? { italic: true } : {}), ...(bold ? { bold: true } : {}) });
+		if (last && !!last.italic === italic && !!last.bold === bold && sameIds(last.referentIds, ids)) {
+			last.text += text;
+			return;
+		}
+
+		runs.push({
+			text,
+			...(italic ? { italic: true } : {}),
+			...(bold ? { bold: true } : {}),
+			...(ids.length > 0 ? { referentIds: ids } : {}),
+		});
 	};
 
 	let cursor = 0;
 	let match: RegExpExecArray | null;
-	EMPHASIS_PATTERN.lastIndex = 0;
-	while ((match = EMPHASIS_PATTERN.exec(fragment)) !== null) {
-		const kind = EMPHASIS_TAGS[match[2].toLowerCase()];
+	MARKUP_EDGE.lastIndex = 0;
+	while ((match = MARKUP_EDGE.exec(fragment)) !== null) {
 		push(fragment.slice(cursor, match.index));
-		if (match[1]) active.delete(kind);
-		else active.add(kind);
 		cursor = match.index + match[0].length;
+
+		if (match[1] !== undefined) {
+			if (!stack.includes(match[1])) stack.push(match[1]);
+		} else if (match[3] === undefined) {
+			const id = stack.pop();
+			if (id !== undefined && !spoken) closedBeforeText.push(id);
+		} else {
+			const kind = EMPHASIS_TAGS[match[3].toLowerCase()];
+			if (match[2]) emphasis.delete(kind);
+			else emphasis.add(kind);
+		}
 	}
 	push(fragment.slice(cursor));
 
-	return { runs, close: active };
-}
+	const referentIds: string[] = [];
+	for (const run of runs) {
+		if (!run.referentIds) continue;
 
-function trimRuns(runs: LyricRun[]): LyricRun[] {
-	const kept = runs.filter((run) => run.text.trim().length > 0);
-	if (kept.length === 0) return [];
-
-	for (let i = 1; i < runs.length; i++) {
-		const run = runs[i];
-		if (run.text.trim().length > 0 || run.text.length === 0) continue;
-		const previous = kept[kept.indexOf(runs[i - 1])];
-		if (previous) previous.text += run.text;
+		referentIds.push(...run.referentIds);
+		// Straight edges where a note runs past a break, rounded where it ends.
+		run.carriesUp = run.referentIds.every((id) => open.ids.includes(id));
+		run.carriesDown = run.referentIds.every((id) => stack.includes(id) && !closedBeforeText.includes(id));
 	}
 
-	kept[0].text = kept[0].text.replace(/^\s+/, "");
-	kept[kept.length - 1].text = kept[kept.length - 1].text.replace(/\s+$/, "");
-	return kept;
-}
+	const unique = [...new Set(referentIds)];
+	const opened = runs.some((run) => run.referentIds && !run.carriesUp);
 
-const REFERENT_HREF = /href="\/(\d{3,})\//g;
-
-function collectReferentIds(fragment: string): string[] {
-	const ids: string[] = [];
-	REFERENT_HREF.lastIndex = 0;
-	let match: RegExpExecArray | null;
-	while ((match = REFERENT_HREF.exec(fragment)) !== null) {
-		if (!ids.includes(match[1])) ids.push(match[1]);
-	}
-	REFERENT_HREF.lastIndex = 0;
-	return ids;
-}
-
-const ANCHOR_EDGE = /<a\b[^>]*href="\/(\d{3,})\/[^"]*"|<\/a>/g;
-
-function stillOpen(fragment: string, carried: string[]): string[] {
-	const stack = [...carried];
-	ANCHOR_EDGE.lastIndex = 0;
-	let match: RegExpExecArray | null;
-	while ((match = ANCHOR_EDGE.exec(fragment)) !== null) {
-		if (match[1]) stack.push(match[1]);
-		else stack.pop();
-	}
-	ANCHOR_EDGE.lastIndex = 0;
-	return stack.filter((id, index) => stack.indexOf(id) === index);
+	return {
+		runs: trimRuns(runs),
+		referentIds: unique,
+		noteStart: opened,
+		closed: closedBeforeText,
+		close: { ids: [...new Set(stack)], emphasis },
+	};
 }
 
 // Genius nests lyric containers and repeats some of them without anchors.
@@ -471,38 +512,40 @@ export function parseLyricLines(html: string): LyricLine[] {
 	for (const block of chosen) {
 		const lyricBlock = stripNonLyricMarkup(block);
 		const pieces = lyricBlock.split(/<br\s*\/?>/i);
-		const owners: string[][] = [];
-		const spanStarts: boolean[] = [];
-		let openIds: string[] = [];
-		let openEmphasis = new Set<string>();
-		const runsByLine: LyricRun[][] = [];
+		const scans: ScannedLine[] = [];
+		let openMarks: OpenMarks = { ids: [], emphasis: new Set() };
 
 		for (const raw of pieces) {
-			const { runs, close } = readRuns(raw, openEmphasis);
-			openEmphasis = close;
-			runsByLine.push(runs);
-			const ids = collectReferentIds(raw);
-			spanStarts.push(ids.length > 0);
-			owners.push([...new Set([...openIds, ...ids])]);
-			openIds = stillOpen(raw, openIds);
+			const scan = scanLine(raw, openMarks);
+			const previous = scans[scans.length - 1];
+
+			// The closing tag comes after the break, so the line above is where the note ends.
+			for (const id of scan.closed) {
+				for (const run of previous?.runs ?? []) {
+					if (run.referentIds?.includes(id)) run.carriesDown = false;
+				}
+			}
+
+			scans.push(scan);
+			openMarks = scan.close;
 		}
 
 		for (const [index, raw] of pieces.entries()) {
 			const text = plainText(raw);
-			const runs = trimRuns(runsByLine[index]);
 			if (text.length === 0) {
 				lines.push({ text: "", referentIds: [], blank: true });
 				continue;
 			}
 
-			const owned = owners[index];
-			const isStart = owned.length > 0 && spanStarts[index];
-			const emphasised = runs.some((run) => run.italic || run.bold);
+			const scan = scans[index];
+			const emphasised = scan.runs.some((run) => run.italic || run.bold);
+			const owned = scan.referentIds;
+
 			lines.push({
 				text,
 				referentIds: owned,
-				...(emphasised ? { runs } : {}),
-				...(owned.length > 0 ? { noteStart: isStart } : {}),
+				...(emphasised || owned.length > 0 ? { runs: scan.runs } : {}),
+				...(owned.length > 0 ? { noteStart: scan.noteStart } : {}),
 			});
 		}
 	}
@@ -640,12 +683,3 @@ export function parseNoteBlocks(node: GeniusDomNode | string | undefined | null)
 
 	return blocks;
 }
-
-const EMPHASIS_TAGS: Record<string, "italic" | "bold"> = {
-	i: "italic",
-	em: "italic",
-	b: "bold",
-	strong: "bold",
-};
-
-const EMPHASIS_PATTERN = /<(\/?)(i|em|b|strong)(\s[^>]*)?>/gi;
