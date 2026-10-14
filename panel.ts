@@ -33,17 +33,21 @@ export type Transport = {
 export type Panel = {
 	readonly state: PanelState;
 	readonly openLine: number | null;
+	/** Which of the open line's notes the popover shows. Lines carry several. */
+	readonly openNote: number;
 	readonly hoverIds: string[] | null;
 	subscribe(listener: () => void): () => void;
 	load(item: TrackItem | undefined): Promise<void>;
 	retry(): Promise<void>;
 	toggle(line: number): void;
+	showNote(index: number): void;
 	hover(ids: string[] | null): void;
 };
 
 export function createPanel(transport: Transport): Panel {
 	let state: PanelState = INITIAL_STATE;
 	let openLine: number | null = null;
+	let openNote = 0;
 	let hoverIds: string[] | null = null;
 	const listeners = new Set<() => void>();
 
@@ -67,6 +71,7 @@ export function createPanel(transport: Transport): Panel {
 		const key = item?.uri ?? "";
 		const mine = ++generation;
 		openLine = null;
+		openNote = 0;
 		lastItem = item;
 
 		inflight?.abort();
@@ -117,7 +122,7 @@ export function createPanel(transport: Transport): Panel {
 
 			const timed = applyTiming(lines, timing);
 
-			const notes = new Map<string, Annotation>();
+			const notes = new Map<string, Annotation[]>();
 			const settled = new Set<string>();
 			// Lyrics render first; annotation batches update the same track incrementally.
 			const paint = () => {
@@ -152,6 +157,9 @@ export function createPanel(transport: Transport): Panel {
 		get openLine() {
 			return openLine;
 		},
+		get openNote() {
+			return openNote;
+		},
 		get hoverIds() {
 			return hoverIds;
 		},
@@ -168,7 +176,16 @@ export function createPanel(transport: Transport): Panel {
 			await load(lastItem);
 		},
 		toggle(line) {
-			openLine = openLine === line ? null : line;
+			if (openLine === line) {
+				openLine = null;
+			} else {
+				openLine = line;
+				openNote = 0;
+			}
+			notify();
+		},
+		showNote(index) {
+			openNote = index;
 			notify();
 		},
 		hover(ids) {

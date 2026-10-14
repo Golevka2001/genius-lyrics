@@ -30,7 +30,7 @@ export type BuildInput = {
 	title: string;
 	artist: string;
 	lines?: LyricLine[];
-	notes?: Map<string, Annotation>;
+	notes?: Map<string, Annotation[]>;
 	settled?: Set<string>;
 };
 
@@ -174,10 +174,9 @@ export function applyTiming(lines: LyricLine[], timing?: Array<{ text: string; s
 
 export function buildTrackView({ title, artist, lines = [], notes = new Map(), settled = new Set() }: BuildInput) {
 	const views: LineView[] = lines.map((line, index) => {
-		const attached = line.referentIds
-			.map((id) => notes.get(id))
-			.filter((note): note is Annotation => Boolean(note?.text));
-		const unique = [...new Map(attached.map((note) => [note.referentId, note])).values()];
+		// Keep every note of each referent, deduped by Genius' id.
+		const attached = line.referentIds.flatMap((id) => notes.get(id) ?? []);
+		const unique = [...new Map(attached.map((note) => [note.id, note])).values()];
 
 		// An anchored line stays clickable while its annotation is still loading.
 		const resolved = line.referentIds.every((id) => settled.has(id));

@@ -57,8 +57,34 @@ $bold: 700;
 }
 
 .gl-note-badge,
-.gl-note-meta {
+.gl-note-meta,
+.gl-note-counter {
 	font-size: $tiny;
+}
+
+/* controls: bordered pill buttons */
+.gl-retry,
+.gl-note-arrow {
+	border: 1px solid tint(35);
+	border-radius: 999px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-size: $small;
+	cursor: pointer;
+	transition:
+		border-color 120ms ease,
+		background 120ms ease;
+}
+
+.gl-retry:hover,
+.gl-note-arrow:hover {
+	border-color: currentColor;
+}
+
+.gl-retry:active,
+.gl-note-arrow:active {
+	transform: scale(0.97);
 }
 
 /* heading */
@@ -217,6 +243,41 @@ $bold: 700;
 	border-top: 1px solid tint(14);
 }
 
+/* note-at-a-time switcher, sitting in the footer beside the vote count */
+.gl-note-foot,
+.gl-note-nav {
+	display: flex;
+	align-items: center;
+}
+
+.gl-note-foot {
+	justify-content: space-between;
+	gap: 8px;
+	margin-top: 9px;
+}
+
+.gl-note-nav {
+	gap: 6px;
+	margin-left: auto;
+}
+
+.gl-note-arrow {
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	line-height: 1;
+}
+
+.gl-note-arrow:hover {
+	background: tint(12);
+}
+
+.gl-note-counter {
+	font-variant-numeric: tabular-nums;
+	opacity: 0.6;
+}
+
 .gl-note-head,
 .gl-note-authors,
 .gl-note-author {
@@ -328,14 +389,14 @@ $bold: 700;
 }
 
 .gl-note-meta,
-.gl-vote-icon {
+.gl-vote-icon,
+.gl-note-arrow {
 	display: inline-flex;
 	align-items: center;
 }
 
 .gl-note-meta {
 	gap: 4px;
-	margin-top: 9px;
 	font-variant-numeric: tabular-nums;
 	opacity: 0.62;
 }
@@ -375,24 +436,6 @@ $bold: 700;
 	align-self: flex-start;
 	margin-top: 4px;
 	padding: 5px 14px;
-	border: 1px solid tint(35);
-	border-radius: 999px;
-	background: transparent;
-	color: inherit;
-	font: inherit;
-	font-size: $small;
-	cursor: pointer;
-	transition:
-		border-color 120ms ease,
-		color 120ms ease;
-}
-
-.gl-retry:hover {
-	border-color: currentColor;
-}
-
-.gl-retry:active {
-	transform: scale(0.97);
 }
 
 /* playback sync */

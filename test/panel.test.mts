@@ -13,6 +13,7 @@ const hit: SongHit = { id: 1, title: "Creep", url: "https://genius.com/x", artis
 const lyricLine = (text: string, referentIds: string[] = []): LyricLine => ({ text, referentIds });
 
 const note = (id: string): Annotation => ({
+	id,
 	referentId: id,
 	fragment: id,
 	text: `a note about ${id}`,
@@ -84,15 +85,15 @@ function harness(overrides: Partial<Transport> = {}) {
 		},
 		fetchAnnotations: async (ids, { signal, onBatch } = {}) => {
 			calls.push(`notes:${ids.join(",")}`);
-			const notes = new Map<string, Annotation>();
+			const notes = new Map<string, Annotation[]>();
 			const settled: string[] = [];
 			for (const id of ids) {
 				const gate = gates.get(id);
 				if (gate) await gate.promise;
 				if (signal?.aborted) return { notes, settled };
-				notes.set(id, note(id));
+				notes.set(id, [note(id)]);
 				settled.push(id);
-				onBatch?.({ notes: new Map([[id, note(id)]]), settled: [id] });
+				onBatch?.({ notes: new Map([[id, [note(id)]]]), settled: [id] });
 			}
 			return { notes, settled };
 		},
@@ -211,14 +212,14 @@ test("a note that arrives after the track changed does not repaint", async () =>
 	// generation check stands between that answer and the screen.
 	const h = harness({
 		fetchAnnotations: async (ids, { onBatch } = {}) => {
-			const notes = new Map<string, Annotation>();
+			const notes = new Map<string, Annotation[]>();
 			const settled: string[] = [];
 			for (const id of ids) {
 				const gate = h.gates.get(id);
 				if (gate) await gate.promise;
-				notes.set(id, note(id));
+				notes.set(id, [note(id)]);
 				settled.push(id);
-				onBatch?.({ notes: new Map([[id, note(id)]]), settled: [id] });
+				onBatch?.({ notes: new Map([[id, [note(id)]]]), settled: [id] });
 			}
 			return { notes, settled };
 		},

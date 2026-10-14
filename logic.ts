@@ -103,6 +103,8 @@ export type NoteAuthor = {
 export type NoteStatus = "verified" | "unreviewed" | "accepted";
 
 export type Annotation = {
+	/** Genius' own id; a referent can carry several. */
+	id: string;
 	referentId: string;
 	fragment: string;
 	text: string;
@@ -134,8 +136,8 @@ function parseAuthors(...lists: Array<Array<Record<string, unknown>> | undefined
 		.filter((author): author is NoteAuthor => author !== null);
 }
 
-// Prefer the referent response, then fall back to the older annotation endpoint.
-export function parseReferent(payload: unknown, referentId: string): Annotation {
+// A referent can carry several annotations, so keep every body, not just the first.
+export function parseReferent(payload: unknown, referentId: string): Annotation[] {
 	const response = (payload as { response?: Record<string, unknown> })?.response ?? {};
 	const referent = (response.referent ?? {}) as Record<string, unknown>;
 	const fragment = typeof referent.fragment === "string" ? referent.fragment : "";
@@ -143,41 +145,38 @@ export function parseReferent(payload: unknown, referentId: string): Annotation 
 
 	const annotation = (response.annotation ?? {}) as Record<string, unknown>;
 	const referentAnnotations = (referent.annotations ?? []) as Array<Record<string, unknown>>;
-	const candidates = referentAnnotations.length > 0 ? referentAnnotations : [annotation];
+	const fromReferent = referentAnnotations.length > 0;
+	const candidates = fromReferent ? referentAnnotations : [annotation];
 
-	let best: Record<string, unknown> = {};
-	let source: Annotation["source"] = "none";
-	for (const candidate of candidates) {
-		if (!readDom(candidate.body)) continue;
-		best = candidate;
-		source = referentAnnotations.length > 0 ? "referent" : "annotation";
-		break;
+	const notes: Annotation[] = [];
+	for (const [index, candidate] of candidates.entries()) {
+		const text = readDom(candidate.body);
+		if (!text) continue;
+
+		const state = typeof candidate.state === "string" ? candidate.state : "";
+		// The fallback endpoint under-reports verification; trust the classification there.
+		const verified =
+			state === "verified" || candidate.verified === true || (!fromReferent && classification === "verified");
+		const unreviewed = state === "unreviewed" || state === "pending";
+		const status: NoteStatus = verified ? "verified" : unreviewed ? "unreviewed" : "accepted";
+
+		const votes = candidate.votes_total ?? annotation.votes_total;
+
+		notes.push({
+			id: candidate.id === undefined || candidate.id === null ? `${referentId}:${index}` : String(candidate.id),
+			referentId,
+			fragment,
+			text,
+			blocks: parseNoteBlocks(bodyOf(candidate) ?? bodyOf(annotation)),
+			verified,
+			status,
+			source: fromReferent ? "referent" : "annotation",
+			authors: parseAuthors(candidate.authors as Array<Record<string, unknown>> | undefined),
+			votes: typeof votes === "number" ? votes : undefined,
+		});
 	}
-	const text = readDom(best.body);
 
-	const state = typeof best.state === "string" ? best.state : "";
-	const verified = classification === "verified" || state === "verified" || best.verified === true;
-	const unreviewed = classification === "unreviewed" || state === "pending";
-	const status: NoteStatus = verified ? "verified" : unreviewed ? "unreviewed" : "accepted";
-
-	const authors = parseAuthors(
-		best.authors as Array<Record<string, unknown>> | undefined,
-		annotation.authors as Array<Record<string, unknown>> | undefined,
-	);
-
-	const votes = best.votes_total ?? annotation.votes_total;
-
-	return {
-		referentId,
-		fragment,
-		text,
-		blocks: text ? parseNoteBlocks(bodyOf(best) ?? bodyOf(annotation)) : [],
-		verified,
-		status,
-		source,
-		authors,
-		votes: typeof votes === "number" ? votes : undefined,
-	};
+	return notes;
 }
 
 export type SongHit = {

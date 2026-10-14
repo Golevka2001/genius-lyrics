@@ -113,8 +113,58 @@ function NoteBadge({ status }: { status: Annotation["status"] }) {
 	});
 }
 
-function NoteCard({ note }: { note: Annotation }) {
+function NoteCard({
+	note,
+	total,
+	index,
+	onShowNote,
+}: {
+	note: Annotation;
+	total: number;
+	index: number;
+	onShowNote: (index: number) => void;
+}) {
 	const bylined = note.status === "verified";
+
+	const meta =
+		note.votes !== undefined
+			? h(
+					"div",
+					{ className: "gl-note-meta" },
+					h("span", {
+						className: "gl-vote-icon",
+						dangerouslySetInnerHTML: { __html: THUMB_UP_ICON },
+						"aria-hidden": "true",
+					}),
+					h("span", { children: note.votes > 0 ? `+${note.votes}` : "0" }),
+				)
+			: null;
+
+	const nav =
+		total > 1
+			? h(
+					"div",
+					{ className: "gl-note-nav" },
+					h("button", {
+						className: "gl-note-arrow",
+						type: "button",
+						onClick: () => onShowNote((index - 1 + total) % total),
+						"aria-label": "Previous annotation",
+						children: "‹",
+					}),
+					h("span", {
+						className: "gl-note-counter",
+						children: `${index + 1} / ${total}`,
+					}),
+					h("button", {
+						className: "gl-note-arrow",
+						type: "button",
+						onClick: () => onShowNote((index + 1) % total),
+						"aria-label": "Next annotation",
+						children: "›",
+					}),
+				)
+			: null;
 
 	return h(
 		"div",
@@ -128,36 +178,33 @@ function NoteCard({ note }: { note: Annotation }) {
 				)
 			: null,
 		h(NoteBody, { blocks: note.blocks, fallback: note.text }),
-		note.votes !== undefined
-			? h(
-					"div",
-					{ className: "gl-note-meta" },
-					h("span", {
-						className: "gl-vote-icon",
-						dangerouslySetInnerHTML: { __html: THUMB_UP_ICON },
-						"aria-hidden": "true",
-					}),
-					h("span", { children: note.votes > 0 ? `+${note.votes}` : "0" }),
-				)
-			: null,
+		meta || nav ? h("div", { className: "gl-note-foot" }, meta, nav) : null,
 	);
 }
 
 function Line({
 	view,
 	isOpen,
+	noteIndex,
 	isActive,
 	hovered,
 	onHover,
 	onToggle,
+	onShowNote,
 }: {
 	view: LineView;
 	isOpen: boolean;
+	noteIndex: number;
 	isActive: boolean;
 	hovered: boolean;
 	onHover: (ids: string[] | null) => void;
 	onToggle: () => void;
+	onShowNote: (index: number) => void;
 }) {
+	const total = view.notes.length;
+	const index = total > 0 ? Math.min(noteIndex, total - 1) : 0;
+	const note = view.notes[index];
+
 	// The clickable area stays on the lyric text so selecting the row still works.
 	return h(
 		"div",
@@ -211,19 +258,16 @@ function Line({
 			? h(
 					"div",
 					{ className: "gl-pop" },
-					!view.resolved
-						? h(
+					note
+						? h(NoteCard, { key: note.id, note, total, index, onShowNote })
+						: h(
 								"div",
 								{ className: "gl-note" },
-								h("div", { className: "gl-note-text", children: "Loading note…" }),
-							)
-						: view.notes.length > 0
-							? view.notes.map((note, index) => h(NoteCard, { key: `${note.referentId}-${index}`, note }))
-							: h(
-									"div",
-									{ className: "gl-note" },
-									h("div", { className: "gl-note-text", children: "No note here." }),
-								),
+								h("div", {
+									className: "gl-note-text",
+									children: view.resolved ? "No note here." : "Loading note…",
+								}),
+							),
 				)
 			: null,
 	);
@@ -341,11 +385,13 @@ function Panel() {
 					view,
 					isActive: view.index === activeIndex,
 					isOpen: panel.openLine === view.index,
+					noteIndex: panel.openNote,
 					hovered:
 						opened ||
 						(panel.hoverIds !== null && view.referentIds.some((id) => panel.hoverIds.includes(id))),
 					onHover: (ids) => panel.hover(ids),
 					onToggle: () => panel.toggle(view.index),
+					onShowNote: (index) => panel.showNote(index),
 				});
 			}),
 		),

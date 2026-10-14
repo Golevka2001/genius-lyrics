@@ -88,15 +88,15 @@ export function fetchLyrics(songUrl: string): Promise<LyricLine[]> {
 	return lyricsCache.get(songUrl);
 }
 
-async function fetchAnnotationUncached(referentId: string): Promise<Annotation> {
+async function fetchAnnotationUncached(referentId: string): Promise<Annotation[]> {
 	try {
 		const body = (await client.cosmos.get(`${ORIGIN}/api/referents/${referentId}`)) as {
 			response?: unknown;
 			code?: number;
 		};
 		if (body?.code === 429) throw new Error("Genius rate limit reached (429)");
-		const annotation = parseReferent(body, referentId);
-		if (annotation.text) return annotation;
+		const annotations = parseReferent(body, referentId);
+		if (annotations.length > 0) return annotations;
 	} catch (error) {
 		if (error instanceof Error && /rate limit/i.test(error.message)) throw error;
 	}
@@ -117,9 +117,9 @@ async function fetchAnnotationUncached(referentId: string): Promise<Annotation> 
 
 const annotationCache = createCache(fetchAnnotationUncached, CACHE);
 
-// Requests are batched to avoid hitting Genius's rate limit.
+// Batched to avoid Genius's rate limit; a referent maps to its annotations.
 export type AnnotationBatch = {
-	notes: Map<string, Annotation>;
+	notes: Map<string, Annotation[]>;
 	settled: string[];
 };
 
@@ -133,7 +133,7 @@ export async function fetchAnnotations(
 	{ signal, onBatch }: AnnotationOptions = {},
 ): Promise<AnnotationBatch> {
 	const unique = [...new Set(referentIds)];
-	const notes = new Map<string, Annotation>();
+	const notes = new Map<string, Annotation[]>();
 	const settled: string[] = [];
 
 	const BATCH_SIZE = 4;
@@ -149,7 +149,7 @@ export async function fetchAnnotations(
 			settled.push(id);
 			settledHere.settled.push(id);
 			if (result.status === "fulfilled") {
-				if (result.value.text) {
+				if (result.value.length > 0) {
 					notes.set(id, result.value);
 					settledHere.notes.set(id, result.value);
 				}

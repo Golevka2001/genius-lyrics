@@ -36,7 +36,7 @@ test("parseReferent reads verified off the fallback endpoint as well", () => {
 	// no annotation list, and the annotation it returns reports itself merely
 	// accepted even when verified — so the referent's own classification is the
 	// only witness left and reading both is what keeps the tint either way.
-	const annotation = parseReferent(
+	const notes = parseReferent(
 		{
 			response: {
 				referent: { id: 42545, classification: "verified" },
@@ -50,8 +50,54 @@ test("parseReferent reads verified off the fallback endpoint as well", () => {
 		},
 		"42545",
 	);
-	assert.equal(annotation.verified, true);
-	assert.equal(annotation.source, "annotation");
+
+	assert.equal(notes.length, 1);
+	assert.equal(notes[0].verified, true);
+	assert.equal(notes[0].source, "annotation");
+});
+
+test("parseReferent keeps every annotation a referent carries", () => {
+	// One referent can carry several annotations; only the first used to survive.
+	const notes = parseReferent(
+		{
+			response: {
+				referent: {
+					id: 11713930,
+					classification: "verified",
+					fragment: "You've been runnin' 'round",
+					annotations: [
+						{
+							id: 11800458,
+							state: "verified",
+							verified: true,
+							votes_total: 320,
+							body: { dom: { tag: "root", children: ["The verified read."] } },
+						},
+						{
+							id: 11713930,
+							state: "accepted",
+							verified: false,
+							votes_total: 78,
+							body: { dom: { tag: "root", children: ["A second opinion."] } },
+						},
+						{ id: 9, state: "pending", body: { dom: {} } },
+					],
+				},
+			},
+		},
+		"11713930",
+	);
+
+	assert.deepEqual(
+		notes.map((entry) => entry.id),
+		["11800458", "11713930"],
+		"only bodies with text survive, in the order Genius wrote them",
+	);
+	assert.equal(notes[0].status, "verified");
+	assert.equal(notes[0].referentId, "11713930");
+	assert.equal(notes[0].fragment, "You've been runnin' 'round");
+	assert.equal(notes[1].status, "accepted", "per-annotation state, not the referent's classification");
+	assert.equal(notes[1].verified, false);
 });
 
 test("parseLyricLines reads lines and their anchors from the real page", () => {

@@ -3,9 +3,10 @@ import { test } from "node:test";
 import { activeLineIndex, applyTiming, buildTrackView, hasTimeline, type LineView } from "../view.ts";
 import type { Annotation, LyricLine } from "../logic.ts";
 
-const note = (id: string, text: string, verified = false): Annotation => ({
-	referentId: id,
-	fragment: id,
+const note = (id: string, text: string, verified = false, referentId = id): Annotation => ({
+	id,
+	referentId,
+	fragment: referentId,
 	text,
 	verified,
 	status: verified ? "verified" : "accepted",
@@ -368,7 +369,7 @@ test("an anchor whose note turns out to be empty stops being annotated", () => {
 		title: "t",
 		artist: "a",
 		lines: [line("answered but empty", ["1"]), line("answered and real", ["2"])],
-		notes: new Map([["2", note("2", "a real note")]]),
+		notes: new Map([["2", [note("2", "a real note")]]]),
 		settled: new Set(["1", "2"]),
 	});
 
@@ -377,4 +378,29 @@ test("an anchor whose note turns out to be empty stops being annotated", () => {
 	assert.equal(track.lines[1].annotated, true);
 	assert.equal(track.annotatedCount, 1, "the empty one must not be counted");
 	assert.equal(track.annotationCount, 1, "and there is one note behind it");
+});
+
+test("a line keeps every note its referent carries, in order, and tints when any is verified", () => {
+	// One verified note is enough to tint the whole line.
+	const track = buildTrackView({
+		title: "t",
+		artist: "a",
+		lines: [line("runnin' 'round", ["1"]), line("plain", ["3"])],
+		notes: new Map([
+			["1", [note("11800458", "verified read", true, "1"), note("11713930", "second opinion", false, "1")]],
+			["3", [note("3", "third", false)]],
+		]),
+		settled: new Set(["1", "3"]),
+	});
+
+	assert.deepEqual(
+		track.lines[0].notes.map((entry) => [entry.id, entry.referentId]),
+		[
+			["11800458", "1"],
+			["11713930", "1"],
+		],
+		"both annotations of the one referent stay attached, in order",
+	);
+	assert.equal(track.lines[0].verified, true, "one verified note is enough to tint the whole line");
+	assert.equal(track.lines[1].verified, false, "an unverified line stays plain");
 });
