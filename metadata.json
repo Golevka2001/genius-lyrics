@@ -1,7 +1,7 @@
 {
 	"name": "genius-lyrics",
 	"kind": "app",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"authors": ["Golevka2001"],
 	"description": "Show lyrics from Genius with the annotations attached to the lines they explain.",
 	"entries": {

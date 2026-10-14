@@ -26,7 +26,7 @@ git clone https://github.com/Golevka2001/genius-lyrics.git
 cd genius-lyrics
 bun install
 bun run build
-bunx spicetify-kit install dist/genius-lyrics@0.1.0
+bunx spicetify-kit install dist/genius-lyrics@0.2.0
 spicetify apply
 ```
 
