@@ -27,5 +27,5 @@ First release of Genius Lyrics for Spicetify.
 - Experimental synced lyrics with playback highlighting.
 - Caching for lyric and annotation requests.
 
-[0.1.0]: https://github.com/Golevka2001/genius-lyrics/releases/tag/genius-lyrics@0.1.0
 [0.2.0]: https://github.com/Golevka2001/genius-lyrics/releases/tag/genius-lyrics@0.2.0
+[0.1.0]: https://github.com/Golevka2001/genius-lyrics/releases/tag/genius-lyrics@0.1.0
