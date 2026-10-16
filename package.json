@@ -9,7 +9,6 @@
 		"build": "spicetify-kit build .",
 		"dev": "spicetify-kit dev .",
 		"check": "tsc && oxlint && spicetify-kit check .",
-		"test": "bun test",
 		"lint": "oxlint",
 		"fmt": "oxfmt",
 		"fmt:check": "oxfmt --check"

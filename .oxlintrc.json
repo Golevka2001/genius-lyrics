@@ -30,13 +30,5 @@
 				"ts-check": false
 			}
 		]
-	},
-	"overrides": [
-		{
-			"files": ["test/**"],
-			"env": {
-				"node": true
-			}
-		}
-	]
+	}
 }
