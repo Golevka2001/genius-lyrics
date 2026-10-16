@@ -187,10 +187,29 @@ function NoteCard({
 function Answer({ answer }: { answer: NoteAnswer }) {
 	return h(
 		"div",
-		{ className: "gl-pop" },
+		{ className: "gl-qa" },
 		h("div", { className: "gl-qa-q" }, h(NoteBody, { blocks: answer.question, fallback: "" })),
-		h(NoteBody, { blocks: answer.answer, fallback: "" }),
-		answer.author ? h(NoteAuthors, { authors: [answer.author] }) : null,
+		h(
+			"div",
+			{ className: "gl-note" },
+			h(NoteBody, { blocks: answer.answer, fallback: "" }),
+			answer.votes !== undefined
+				? h(
+						"div",
+						{ className: "gl-note-foot" },
+						h(
+							"div",
+							{ className: "gl-note-meta" },
+							h("span", {
+								className: "gl-vote-icon",
+								dangerouslySetInnerHTML: { __html: THUMB_UP_ICON },
+								"aria-hidden": "true",
+							}),
+							h("span", { children: answer.votes > 0 ? `+${answer.votes}` : "0" }),
+						),
+					)
+				: null,
+		),
 	);
 }
 
@@ -322,15 +341,7 @@ const TABS: Array<{ id: TrackTab; label: string }> = [
 	{ id: "qa", label: "Q&A" },
 ];
 
-function Tabs({
-	tab,
-	count,
-	onSelect,
-}: {
-	tab: TrackTab;
-	count: number;
-	onSelect: (tab: TrackTab) => void;
-}) {
+function Tabs({ tab, count, onSelect }: { tab: TrackTab; count: number; onSelect: (tab: TrackTab) => void }) {
 	return h(
 		"div",
 		{ className: "gl-tabs", role: "tablist" },
@@ -460,7 +471,7 @@ function Panel() {
 				? track.qa.length > 0
 					? h(
 							"div",
-							{ className: "gl-qa" },
+							{ className: "gl-qa-list" },
 							track.qa.map((answer) => h(Answer, { key: answer.id, answer })),
 						)
 					: h("div", { className: "gl-status gl-status-pane", children: "No Q&A on Genius." })

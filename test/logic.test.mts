@@ -5,6 +5,7 @@ import {
 	isOriginalSong,
 	parseLyricLines,
 	parseNoteBlocks,
+	parseQanda,
 	parseReferent,
 	parseSong,
 	parseSpotifyLyrics,
@@ -425,4 +426,85 @@ test("parseLyricLines joins a song split across several containers", () => {
 	assert.ok(lines.length > 100, `expected the whole song, got ${lines.length} lines`);
 	assert.equal(lines[0].text.startsWith("[Intro:"), true, "starts at the first section");
 	assert.equal(lines.at(-1)?.blank, undefined, "does not add a trailing blank line");
+});
+
+test("parseQanda reads the questions endpoint Genius serves now", () => {
+	// /api/songs/{id}/qanda is gone (404); /api/questions?song_id={id} keeps the
+	// question as a plain string and buries the answer DOM one level deeper, under
+	// answer.body, with the vote count on the answer rather than the question.
+	const answers = parseQanda({
+		response: {
+			questions: [
+				{
+					id: 64731,
+					votes_total: 0,
+					body: 'What did Eric Clapton say about "Tears in Heaven"?',
+					answer: {
+						votes_total: 10,
+						body: {
+							dom: {
+								tag: "root",
+								children: [
+									{
+										tag: "p",
+										children: [
+											"They are sweet little songs",
+											{
+												tag: "a",
+												attributes: { href: "https://genius.com/Eric-clapton" },
+												children: ["said Clapton"],
+											},
+										],
+									},
+								],
+							},
+						},
+						authors: [{ user: { name: "Avi" } }],
+					},
+				},
+			],
+		},
+	});
+
+	assert.equal(answers.length, 1);
+	assert.equal(answers[0].id, "64731");
+	// The answer is what gets upvoted, so its count wins over the question's 0.
+	assert.equal(answers[0].votes, 10);
+
+	assert.deepEqual(answers[0].question, [
+		{
+			kind: "paragraph",
+			spans: [{ text: 'What did Eric Clapton say about "Tears in Heaven"?' }],
+		},
+	]);
+	assert.deepEqual(answers[0].answer, [
+		{
+			kind: "paragraph",
+			spans: [
+				{ text: "They are sweet little songs" },
+				{ text: "said Clapton", href: "https://genius.com/Eric-clapton" },
+			],
+		},
+	]);
+});
+
+test("parseQanda skips questions that carry no answer yet", () => {
+	const answers = parseQanda({
+		response: {
+			questions: [
+				{
+					id: 1,
+					body: "Answered?",
+					answer: { body: { dom: { tag: "root", children: [{ tag: "p", children: ["Yes"] }] } } },
+				},
+				{ id: 2, body: "Still open?" },
+				{ id: 3, body: "", answer: { body: { dom: { tag: "root", children: [] } } } },
+			],
+		},
+	});
+
+	assert.deepEqual(
+		answers.map((entry) => entry.id),
+		["1"],
+	);
 });

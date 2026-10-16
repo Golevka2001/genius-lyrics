@@ -31,7 +31,7 @@ $bold: 700;
 .gl-panel,
 .gl-head,
 .gl-lines,
-.gl-qa,
+.gl-qa-list,
 .gl-note-body,
 .gl-status {
 	display: flex;
@@ -263,10 +263,24 @@ $bold: 700;
 	border-top: 1px solid tint(14);
 }
 
-/* the question leads the card its answer sits in */
+.gl-qa + .gl-qa {
+	margin-top: 16px;
+}
+
 .gl-qa-q {
-	margin-bottom: 9px;
-	font-weight: $semibold;
+	margin-bottom: 8px;
+	font-weight: $bold;
+}
+
+.gl-qa-q .gl-note-text {
+	font-size: 1em;
+}
+
+.gl-qa .gl-note {
+	padding: 12px 14px;
+	border-radius: 10px;
+	background: tint(6);
+	border-left: 3px solid currentColor;
 }
 
 /* note-at-a-time switcher, sitting in the footer beside the vote count */

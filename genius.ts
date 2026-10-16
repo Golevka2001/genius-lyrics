@@ -93,7 +93,7 @@ export async function fetchOriginalSong(id: number): Promise<GeniusSong | null> 
 }
 
 const qandaCache = createCache(async (id: number): Promise<NoteAnswer[]> => {
-	return parseQanda(await geniusGet(`${ORIGIN}/api/songs/${id}/qanda?per_page=50`));
+	return parseQanda(await geniusGet(`${ORIGIN}/api/questions?song_id=${id}&per_page=50`));
 }, CACHE);
 
 export function fetchSongQanda(id: number): Promise<NoteAnswer[]> {

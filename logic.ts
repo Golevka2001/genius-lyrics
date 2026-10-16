@@ -697,30 +697,32 @@ export type NoteAnswer = {
 	id: string;
 	question: NoteBlock[];
 	answer: NoteBlock[];
-	author?: NoteAuthor;
+	votes?: number;
 };
 
 export function parseQanda(payload: unknown): NoteAnswer[] {
 	throwIfGeniusRefused(payload);
 
-	// The song and the question endpoints name the same list differently.
-	const response = (payload as { response?: { qanda_items?: unknown; questions?: unknown } })?.response;
-	const items = response?.qanda_items ?? response?.questions;
+	// /api/questions?song_id={id} replaced the retired /api/songs/{id}/qanda.
+	const response = (payload as { response?: { questions?: unknown } })?.response;
+	const items = response?.questions;
 	if (!Array.isArray(items)) return [];
 
 	const answers: NoteAnswer[] = [];
 	for (const [index, item] of items.entries()) {
 		const entry = (item ?? {}) as Record<string, unknown>;
-		const question = parseNoteBlocks(domOf(entry.question));
-		const answer = parseNoteBlocks(domOf(entry.answer));
+		const answerRecord = (entry.answer ?? {}) as Record<string, unknown>;
+		// The question body is plain text; only the answer carries a DOM node.
+		const question = parseNoteBlocks(typeof entry.body === "string" ? entry.body : undefined);
+		const answer = parseNoteBlocks(domOf(answerRecord.body));
 		if (question.length === 0 || answer.length === 0) continue;
 
-		const answerer = (entry.answerer ?? {}) as Record<string, unknown>;
+		const votes = answerRecord.votes_total;
 		answers.push({
 			id: typeof entry.id === "number" ? String(entry.id) : `qanda:${index}`,
 			question,
 			answer,
-			author: parseAuthors([(answerer.user ? answerer : { user: answerer }) as Record<string, unknown>])[0],
+			votes: typeof votes === "number" ? votes : undefined,
 		});
 	}
 
