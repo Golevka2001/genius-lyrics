@@ -357,9 +357,6 @@ test("a line is annotated before its note arrives, or the panel could never be c
 	assert.equal(track.lines[0].resolved, true, "nothing outstanding, nothing to wait for");
 	assert.equal(track.lines[1].annotated, true, "the anchor alone is enough to offer the note");
 	assert.equal(track.lines[1].resolved, false, "so the panel must not read the empty list as 'no note'");
-	assert.equal(track.annotatedCount, 1);
-	// The anchor shows before its note does, so this starts at nothing.
-	assert.equal(track.annotationCount, 0);
 });
 
 test("an anchor whose note turns out to be empty stops being annotated", () => {
@@ -376,8 +373,6 @@ test("an anchor whose note turns out to be empty stops being annotated", () => {
 	assert.equal(track.lines[0].annotated, false, "answered with no body, so nothing to open");
 	assert.equal(track.lines[0].resolved, true);
 	assert.equal(track.lines[1].annotated, true);
-	assert.equal(track.annotatedCount, 1, "the empty one must not be counted");
-	assert.equal(track.annotationCount, 1, "and there is one note behind it");
 });
 
 test("a note split by emphasis still reads as one marked box", () => {

@@ -29,7 +29,6 @@ const song: GeniusSong = {
 	title: "Creep",
 	artist: "Radiohead",
 	url: "https://genius.com/x",
-	annotationCount: 1,
 	translationIds: [],
 	bio: [],
 };

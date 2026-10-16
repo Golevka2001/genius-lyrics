@@ -274,7 +274,6 @@ export type GeniusSong = {
 	title: string;
 	artist: string;
 	url: string;
-	annotationCount: number;
 	translationIds: number[];
 	bio: NoteBlock[];
 };
@@ -300,7 +299,6 @@ export function parseSong(payload: unknown): GeniusSong | null {
 					? (song.primary_artist as { name: string }).name
 					: "",
 		url: typeof song.url === "string" ? song.url : "",
-		annotationCount: typeof song.annotation_count === "number" ? song.annotation_count : 0,
 		translationIds: ((song.translation_songs ?? []) as Array<Record<string, unknown>>)
 			.map((entry) => entry.id)
 			.filter((id): id is number => typeof id === "number"),

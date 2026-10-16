@@ -341,7 +341,7 @@ const TABS: Array<{ id: TrackTab; label: string }> = [
 	{ id: "qa", label: "Q&A" },
 ];
 
-function Tabs({ tab, count, onSelect }: { tab: TrackTab; count: number; onSelect: (tab: TrackTab) => void }) {
+function Tabs({ tab, onSelect }: { tab: TrackTab; onSelect: (tab: TrackTab) => void }) {
 	return h(
 		"div",
 		{ className: "gl-tabs", role: "tablist" },
@@ -357,13 +357,6 @@ function Tabs({ tab, count, onSelect }: { tab: TrackTab; count: number; onSelect
 					onClick: () => onSelect(entry.id),
 				},
 				entry.label,
-				entry.id === "annotations" && count > 0
-					? h("span", {
-							className: "gl-tab-count",
-							title: `${count} ${count === 1 ? "annotation" : "annotations"}`,
-							children: String(count),
-						})
-					: null,
 			),
 		),
 	);
@@ -488,7 +481,6 @@ function Panel() {
 		),
 		h(Tabs, {
 			tab: panel.tab,
-			count: track.annotationCount,
 			onSelect: (next) => panel.selectTab(next),
 		}),
 		pane,

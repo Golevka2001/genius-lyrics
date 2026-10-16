@@ -28,8 +28,6 @@ export type TrackView = {
 	title: string;
 	artist: string;
 	lines: LineView[];
-	annotatedCount: number;
-	annotationCount: number;
 	bio: NoteBlock[];
 	qa: NoteAnswer[];
 	source: "genius" | "none";
@@ -242,15 +240,10 @@ export function buildTrackView({
 		};
 	});
 
-	const annotatedCount = views.filter((view) => view.annotated).length;
-	const annotationCount = notes.size;
-
 	return {
 		title,
 		artist,
 		lines: views,
-		annotatedCount,
-		annotationCount,
 		bio,
 		qa,
 		source: views.length > 0 ? "genius" : "none",
