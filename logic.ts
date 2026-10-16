@@ -277,6 +277,8 @@ export type GeniusSong = {
 	artistUrl?: string;
 	translationIds: number[];
 	bio: NoteBlock[];
+	bioStatus?: NoteStatus;
+	bioVotes?: number;
 };
 
 // Genius translation pages point back to the original through translationIds.
@@ -289,6 +291,19 @@ export function parseSong(payload: unknown): GeniusSong | null {
 	if (!song || typeof song.id !== "number") return null;
 
 	const bio = parseNoteBlocks(domOf(song.description));
+
+	const bioReferent = (song.description_annotation ?? {}) as Record<string, unknown>;
+	const bioAnnotations = (bioReferent.annotations ?? []) as Array<Record<string, unknown>>;
+	const bioAnnotation = (bioAnnotations[0] ?? {}) as Record<string, unknown>;
+	const bioState = typeof bioAnnotation.state === "string" ? bioAnnotation.state : "";
+	const bioVotes = bioAnnotation.votes_total ?? bioReferent.votes_total;
+	const bioClassification = typeof bioReferent.classification === "string" ? bioReferent.classification : "";
+	const bioStatus: NoteStatus =
+		bioState === "verified" || bioAnnotation.verified === true || bioClassification === "verified"
+			? "verified"
+			: bioState === "unreviewed" || bioState === "pending"
+				? "unreviewed"
+				: "accepted";
 
 	return {
 		id: song.id,
@@ -309,6 +324,8 @@ export function parseSong(payload: unknown): GeniusSong | null {
 			.map((entry) => entry.id)
 			.filter((id): id is number => typeof id === "number"),
 		bio: hasProse(bio) ? bio : [],
+		bioStatus,
+		bioVotes: typeof bioVotes === "number" ? bioVotes : undefined,
 	};
 }
 

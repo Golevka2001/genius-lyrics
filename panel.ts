@@ -148,6 +148,8 @@ export function createPanel(transport: Transport): Panel {
 						notes,
 						settled,
 						bio: song?.bio,
+						bioStatus: song?.bioStatus,
+						bioVotes: song?.bioVotes,
 						qa: answers,
 					}),
 				});

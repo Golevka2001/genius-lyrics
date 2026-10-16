@@ -1,6 +1,6 @@
 /** Builds render-ready track state outside the React tree. */
 
-import type { Annotation, LyricLine, LyricRun, NoteAnswer, NoteBlock } from "./logic.ts";
+import type { Annotation, LyricLine, LyricRun, NoteAnswer, NoteBlock, NoteStatus } from "./logic.ts";
 import { normalize, sameIds } from "./logic.ts";
 
 export type LineChunk = {
@@ -31,6 +31,8 @@ export type TrackView = {
 	artistUrl?: string;
 	lines: LineView[];
 	bio: NoteBlock[];
+	bioStatus?: NoteStatus;
+	bioVotes?: number;
 	qa: NoteAnswer[];
 	source: "genius" | "none";
 };
@@ -44,6 +46,8 @@ export type BuildInput = {
 	notes?: Map<string, Annotation[]>;
 	settled?: Set<string>;
 	bio?: NoteBlock[];
+	bioStatus?: NoteStatus;
+	bioVotes?: number;
 	qa?: NoteAnswer[];
 };
 
@@ -220,6 +224,8 @@ export function buildTrackView({
 	notes = new Map(),
 	settled = new Set(),
 	bio = [],
+	bioStatus,
+	bioVotes,
 	qa = [],
 }: BuildInput) {
 	const views: LineView[] = lines.map((line, index) => {
@@ -253,6 +259,8 @@ export function buildTrackView({
 		artistUrl,
 		lines: views,
 		bio,
+		bioStatus,
+		bioVotes,
 		qa,
 		source: views.length > 0 ? "genius" : "none",
 	} satisfies TrackView;

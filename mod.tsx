@@ -184,6 +184,21 @@ function NoteCard({
 	);
 }
 
+function VoteMeta({ votes }: { votes: number | undefined }) {
+	if (votes === undefined) return null;
+
+	return h(
+		"div",
+		{ className: "gl-note-meta" },
+		h("span", {
+			className: "gl-vote-icon",
+			dangerouslySetInnerHTML: { __html: THUMB_UP_ICON },
+			"aria-hidden": "true",
+		}),
+		h("span", { children: votes > 0 ? `+${votes}` : "0" }),
+	);
+}
+
 function Answer({ answer }: { answer: NoteAnswer }) {
 	return h(
 		"div",
@@ -194,20 +209,7 @@ function Answer({ answer }: { answer: NoteAnswer }) {
 			{ className: "gl-note" },
 			h(NoteBody, { blocks: answer.answer, fallback: "" }),
 			answer.votes !== undefined
-				? h(
-						"div",
-						{ className: "gl-note-foot" },
-						h(
-							"div",
-							{ className: "gl-note-meta" },
-							h("span", {
-								className: "gl-vote-icon",
-								dangerouslySetInnerHTML: { __html: THUMB_UP_ICON },
-								"aria-hidden": "true",
-							}),
-							h("span", { children: answer.votes > 0 ? `+${answer.votes}` : "0" }),
-						),
-					)
+				? h("div", { className: "gl-note-foot" }, h(VoteMeta, { votes: answer.votes }))
 				: null,
 		),
 	);
@@ -468,7 +470,17 @@ function Panel() {
 	const pane =
 		panel.tab === "bio"
 			? track.bio.length > 0
-				? h("div", { className: "gl-bio" }, h(NoteBody, { blocks: track.bio, fallback: "" }))
+				? h(
+						"div",
+						{ className: "gl-bio" },
+						track.bioStatus && track.bioStatus !== "accepted"
+							? h("div", { className: "gl-note-head" }, h(NoteBadge, { status: track.bioStatus }))
+							: null,
+						h(NoteBody, { blocks: track.bio, fallback: "" }),
+						track.bioVotes !== undefined
+							? h("div", { className: "gl-note-foot" }, h(VoteMeta, { votes: track.bioVotes }))
+							: null,
+					)
 				: h("div", { className: "gl-status gl-status-pane", children: "No song bio on Genius." })
 			: panel.tab === "qa"
 				? track.qa.length > 0
