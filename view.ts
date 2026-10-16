@@ -27,6 +27,8 @@ export type LineView = {
 export type TrackView = {
 	title: string;
 	artist: string;
+	url?: string;
+	artistUrl?: string;
 	lines: LineView[];
 	bio: NoteBlock[];
 	qa: NoteAnswer[];
@@ -36,6 +38,8 @@ export type TrackView = {
 export type BuildInput = {
 	title: string;
 	artist: string;
+	url?: string;
+	artistUrl?: string;
 	lines?: LyricLine[];
 	notes?: Map<string, Annotation[]>;
 	settled?: Set<string>;
@@ -210,6 +214,8 @@ function groupRuns(runs: LyricRun[]): LineChunk[] {
 export function buildTrackView({
 	title,
 	artist,
+	url,
+	artistUrl,
 	lines = [],
 	notes = new Map(),
 	settled = new Set(),
@@ -243,6 +249,8 @@ export function buildTrackView({
 	return {
 		title,
 		artist,
+		url,
+		artistUrl,
 		lines: views,
 		bio,
 		qa,

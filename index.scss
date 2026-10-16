@@ -138,6 +138,22 @@ $bold: 700;
 	opacity: 0.7;
 }
 
+.gl-page .gl-head-link,
+.gl-page .gl-head-link:hover {
+	color: inherit;
+	cursor: pointer;
+	text-decoration: none;
+	opacity: 1;
+}
+
+.gl-page .gl-artist.gl-head-link {
+	opacity: 0.7;
+}
+
+.gl-page .gl-head-link:hover {
+	opacity: 0.75;
+}
+
 .gl-hint {
 	margin: 0;
 	opacity: 0.6;

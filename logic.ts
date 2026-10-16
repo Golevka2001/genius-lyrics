@@ -274,6 +274,7 @@ export type GeniusSong = {
 	title: string;
 	artist: string;
 	url: string;
+	artistUrl?: string;
 	translationIds: number[];
 	bio: NoteBlock[];
 };
@@ -299,6 +300,11 @@ export function parseSong(payload: unknown): GeniusSong | null {
 					? (song.primary_artist as { name: string }).name
 					: "",
 		url: typeof song.url === "string" ? song.url : "",
+		// Genius links the credited artist, not every name in artist_names.
+		artistUrl:
+			typeof (song.primary_artist as Record<string, unknown> | undefined)?.url === "string"
+				? (song.primary_artist as { url: string }).url
+				: undefined,
 		translationIds: ((song.translation_songs ?? []) as Array<Record<string, unknown>>)
 			.map((entry) => entry.id)
 			.filter((id): id is number => typeof id === "number"),

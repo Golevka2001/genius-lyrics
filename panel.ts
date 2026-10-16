@@ -142,6 +142,8 @@ export function createPanel(transport: Transport): Panel {
 					track: buildTrackView({
 						title: geniusTitle,
 						artist: geniusArtist,
+						url: song?.url || hit.url,
+						artistUrl: song?.artistUrl,
 						lines: timed,
 						notes,
 						settled,

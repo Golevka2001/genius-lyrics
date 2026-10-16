@@ -5,6 +5,7 @@
 ### Added
 
 - Song bio and song Q&A, in tabs beside the lyrics.
+- Show external links.
 
 ## [0.2.0] - 2026-10-14
 

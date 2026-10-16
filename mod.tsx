@@ -362,6 +362,16 @@ function Tabs({ tab, onSelect }: { tab: TrackTab; onSelect: (tab: TrackTab) => v
 	);
 }
 
+function HeadLink({ className, href, children }: { className: string; href?: string; children: string }) {
+	if (!href) return h("div", { className, children });
+
+	return h(
+		"a",
+		{ className: `${className} gl-head-link`, href, target: "_blank", rel: "noopener noreferrer" },
+		children,
+	);
+}
+
 function Panel() {
 	const panel = usePanel();
 	const state = panel.state;
@@ -476,8 +486,8 @@ function Panel() {
 		h(
 			"header",
 			{ className: "gl-head" },
-			h("div", { className: "gl-title", children: track.title }),
-			h("div", { className: "gl-artist", children: track.artist }),
+			h(HeadLink, { className: "gl-title", href: track.url, children: track.title }),
+			h(HeadLink, { className: "gl-artist", href: track.artistUrl, children: track.artist }),
 		),
 		h(Tabs, {
 			tab: panel.tab,
