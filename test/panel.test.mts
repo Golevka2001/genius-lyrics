@@ -31,7 +31,7 @@ const song: GeniusSong = {
 	url: "https://genius.com/x",
 	annotationCount: 1,
 	translationIds: [],
-	description: "",
+	bio: [],
 };
 
 // A transport that records what it was asked and answers from a table of
@@ -82,6 +82,10 @@ function harness(overrides: Partial<Transport> = {}) {
 					{ text: "another", startTimeMs: 4000 },
 				],
 			};
+		},
+		fetchSongQanda: async (id) => {
+			calls.push(`qanda:${id}`);
+			return [];
 		},
 		fetchAnnotations: async (ids, { signal, onBatch } = {}) => {
 			calls.push(`notes:${ids.join(",")}`);

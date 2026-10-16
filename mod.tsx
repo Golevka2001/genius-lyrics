@@ -7,11 +7,12 @@ import {
 	fetchAnnotations,
 	fetchLyrics,
 	fetchOriginalSong,
+	fetchSongQanda,
 	fetchSpotifyLyrics,
 	searchSong,
 } from "./genius.ts";
-import type { Annotation, NoteBlock, NoteSpan } from "./logic.ts";
-import { createPanel, type TrackItem } from "./panel.ts";
+import type { Annotation, NoteAnswer, NoteAuthor, NoteBlock, NoteSpan } from "./logic.ts";
+import { createPanel, type TrackItem, type TrackTab } from "./panel.ts";
 import { activeLineIndex, hasTimeline, type LineView } from "./view.ts";
 
 const h = React.createElement;
@@ -35,6 +36,7 @@ const panel = createPanel({
 	fetchOriginalSong,
 	fetchLyrics,
 	fetchSpotifyLyrics,
+	fetchSongQanda,
 	fetchAnnotations,
 	detectFailure,
 	warn,
@@ -85,13 +87,13 @@ function NoteBody({ blocks, fallback }: { blocks: NoteBlock[]; fallback: string 
 	);
 }
 
-function NoteAuthors({ note }: { note: Annotation }) {
-	if (note.authors.length === 0) return null;
+function NoteAuthors({ authors }: { authors: NoteAuthor[] }) {
+	if (authors.length === 0) return null;
 
 	return h(
 		"div",
 		{ className: "gl-note-authors" },
-		note.authors.map((author, index) =>
+		authors.map((author, index) =>
 			h(
 				"div",
 				{ key: `${author.name}-${index}`, className: "gl-note-author" },
@@ -174,11 +176,21 @@ function NoteCard({
 					"div",
 					{ className: "gl-note-head" },
 					h(NoteBadge, { status: note.status }),
-					bylined ? h(NoteAuthors, { note }) : null,
+					bylined ? h(NoteAuthors, { authors: note.authors }) : null,
 				)
 			: null,
 		h(NoteBody, { blocks: note.blocks, fallback: note.text }),
 		meta || nav ? h("div", { className: "gl-note-foot" }, meta, nav) : null,
+	);
+}
+
+function Answer({ answer }: { answer: NoteAnswer }) {
+	return h(
+		"div",
+		{ className: "gl-pop" },
+		h("div", { className: "gl-qa-q" }, h(NoteBody, { blocks: answer.question, fallback: "" })),
+		h(NoteBody, { blocks: answer.answer, fallback: "" }),
+		answer.author ? h(NoteAuthors, { authors: [answer.author] }) : null,
 	);
 }
 
@@ -304,6 +316,48 @@ function usePanel() {
 	return panel;
 }
 
+const TABS: Array<{ id: TrackTab; label: string }> = [
+	{ id: "annotations", label: "Lyrics & Annotations" },
+	{ id: "bio", label: "About" },
+	{ id: "qa", label: "Q&A" },
+];
+
+function Tabs({
+	tab,
+	count,
+	onSelect,
+}: {
+	tab: TrackTab;
+	count: number;
+	onSelect: (tab: TrackTab) => void;
+}) {
+	return h(
+		"div",
+		{ className: "gl-tabs", role: "tablist" },
+		TABS.map((entry) =>
+			h(
+				"button",
+				{
+					key: entry.id,
+					className: entry.id === tab ? "gl-tab gl-tab-active" : "gl-tab",
+					type: "button",
+					role: "tab",
+					"aria-selected": entry.id === tab,
+					onClick: () => onSelect(entry.id),
+				},
+				entry.label,
+				entry.id === "annotations" && count > 0
+					? h("span", {
+							className: "gl-tab-count",
+							title: `${count} ${count === 1 ? "annotation" : "annotations"}`,
+							children: String(count),
+						})
+					: null,
+			),
+		),
+	);
+}
+
 function Panel() {
 	const panel = usePanel();
 	const state = panel.state;
@@ -329,7 +383,9 @@ function Panel() {
 	}, [timed]);
 
 	const activeIndex =
-		state.state === "ready" && state.track && position !== null ? activeLineIndex(state.track.lines, position) : -1;
+		panel.tab === "annotations" && state.state === "ready" && state.track && position !== null
+			? activeLineIndex(state.track.lines, position)
+			: -1;
 
 	React.useEffect(() => {
 		if (activeIndex < 0) return;
@@ -351,13 +407,6 @@ function Panel() {
 			"div",
 			{ className: "gl-status gl-status-error" },
 			h("p", { children: reason }),
-			/proxy|daemon|CORS/i.test(reason)
-				? h("p", {
-						className: "gl-hint",
-						children:
-							"Genius needs a CORS proxy, and spicetify's hosted one will not carry genius.com. Start the spicetify daemon, then retry.",
-					})
-				: null,
 			h("button", {
 				className: "gl-retry",
 				type: "button",
@@ -372,7 +421,7 @@ function Panel() {
 		return h(
 			"div",
 			{ className: "gl-status" },
-			h("p", { children: "No lyrics on Genius for this track." }),
+			h("p", { children: "No lyrics on Genius." }),
 			track ? h("p", { className: "gl-hint", children: `${track.title} — ${track.artist}` }) : null,
 			h("button", {
 				className: "gl-retry",
@@ -383,6 +432,40 @@ function Panel() {
 		);
 	}
 
+	const lines = h(
+		"div",
+		{ className: "gl-lines" },
+		track.lines.map((view) => {
+			return h(Line, {
+				key: view.index,
+				view,
+				isActive: view.index === activeIndex,
+				isOpen: panel.openLine === view.index,
+				noteIndex: panel.openNote,
+				openIds: panel.openLine !== null ? track.lines[panel.openLine]?.referentIds : undefined,
+				hoverIds: panel.hoverIds,
+				onHover: (ids) => panel.hover(ids),
+				onToggle: () => panel.toggle(view.index),
+				onShowNote: (index) => panel.showNote(index),
+			});
+		}),
+	);
+
+	const pane =
+		panel.tab === "bio"
+			? track.bio.length > 0
+				? h("div", { className: "gl-bio" }, h(NoteBody, { blocks: track.bio, fallback: "" }))
+				: h("div", { className: "gl-status gl-status-pane", children: "No song bio on Genius." })
+			: panel.tab === "qa"
+				? track.qa.length > 0
+					? h(
+							"div",
+							{ className: "gl-qa" },
+							track.qa.map((answer) => h(Answer, { key: answer.id, answer })),
+						)
+					: h("div", { className: "gl-status gl-status-pane", children: "No Q&A on Genius." })
+				: lines;
+
 	return h(
 		"div",
 		{ className: "gl-panel" },
@@ -391,29 +474,13 @@ function Panel() {
 			{ className: "gl-head" },
 			h("div", { className: "gl-title", children: track.title }),
 			h("div", { className: "gl-artist", children: track.artist }),
-			h("div", {
-				className: "gl-count",
-				children: `${track.annotationCount} ${track.annotationCount === 1 ? "annotation" : "annotations"}`,
-			}),
 		),
-		h(
-			"div",
-			{ className: "gl-lines" },
-			track.lines.map((view) => {
-				return h(Line, {
-					key: view.index,
-					view,
-					isActive: view.index === activeIndex,
-					isOpen: panel.openLine === view.index,
-					noteIndex: panel.openNote,
-					openIds: panel.openLine !== null ? track.lines[panel.openLine]?.referentIds : undefined,
-					hoverIds: panel.hoverIds,
-					onHover: (ids) => panel.hover(ids),
-					onToggle: () => panel.toggle(view.index),
-					onShowNote: (index) => panel.showNote(index),
-				});
-			}),
-		),
+		h(Tabs, {
+			tab: panel.tab,
+			count: track.annotationCount,
+			onSelect: (next) => panel.selectTab(next),
+		}),
+		pane,
 	);
 }
 

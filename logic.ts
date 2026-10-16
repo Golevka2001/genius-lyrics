@@ -90,6 +90,10 @@ function bodyOf(entry: Record<string, unknown> | undefined): GeniusDomNode | und
 	return (entry?.body as { dom?: GeniusDomNode } | undefined)?.dom;
 }
 
+function domOf(value: unknown): GeniusDomNode | undefined {
+	return (value as { dom?: GeniusDomNode } | undefined)?.dom;
+}
+
 function readDom(value: unknown): string {
 	if (!value || typeof value !== "object") return "";
 	return domToText((value as { dom?: GeniusDomNode }).dom);
@@ -190,11 +194,7 @@ export type SongHit = {
 export function throwIfGeniusRefused(payload: unknown): void {
 	const code = (payload as { code?: unknown } | null | undefined)?.code;
 	if (typeof code !== "number" || code < 400) return;
-	throw new Error(
-		code === 429
-			? "Genius rate limit reached (429). Try again in a moment."
-			: `Genius refused the request (${code}).`,
-	);
+	throw new Error(code === 429 ? "Genius rate limit reached (429)" : `Genius refused the request (${code}).`);
 }
 
 export function parseSearchResults(payload: unknown): SongHit[] {
@@ -276,7 +276,7 @@ export type GeniusSong = {
 	url: string;
 	annotationCount: number;
 	translationIds: number[];
-	description: string;
+	bio: NoteBlock[];
 };
 
 // Genius translation pages point back to the original through translationIds.
@@ -288,7 +288,7 @@ export function parseSong(payload: unknown): GeniusSong | null {
 	const song = (payload as { response?: { song?: Record<string, unknown> } })?.response?.song;
 	if (!song || typeof song.id !== "number") return null;
 
-	const description = song.description as { dom?: GeniusDomNode } | undefined;
+	const bio = parseNoteBlocks(domOf(song.description));
 
 	return {
 		id: song.id,
@@ -304,7 +304,7 @@ export function parseSong(payload: unknown): GeniusSong | null {
 		translationIds: ((song.translation_songs ?? []) as Array<Record<string, unknown>>)
 			.map((entry) => entry.id)
 			.filter((id): id is number => typeof id === "number"),
-		description: domToText(description?.dom),
+		bio: hasProse(bio) ? bio : [],
 	};
 }
 
@@ -632,6 +632,16 @@ function spansToText(spans: NoteSpan[]): string {
 		.trim();
 }
 
+// A bio made of nothing but punctuation says no more than an empty one; an image counts.
+function hasProse(blocks: NoteBlock[]): boolean {
+	return blocks.some((block) => {
+		if (block.kind === "image") return true;
+
+		const text = block.kind === "paragraph" ? spansToText(block.spans) : block.lines.map(spansToText).join("\n");
+		return /[\p{L}\p{N}]/u.test(text);
+	});
+}
+
 export function parseNoteBlocks(node: GeniusDomNode | string | undefined | null): NoteBlock[] {
 	if (!node || typeof node === "string") {
 		const text = typeof node === "string" ? node.trim() : "";
@@ -681,4 +691,38 @@ export function parseNoteBlocks(node: GeniusDomNode | string | undefined | null)
 	}
 
 	return blocks;
+}
+
+export type NoteAnswer = {
+	id: string;
+	question: NoteBlock[];
+	answer: NoteBlock[];
+	author?: NoteAuthor;
+};
+
+export function parseQanda(payload: unknown): NoteAnswer[] {
+	throwIfGeniusRefused(payload);
+
+	// The song and the question endpoints name the same list differently.
+	const response = (payload as { response?: { qanda_items?: unknown; questions?: unknown } })?.response;
+	const items = response?.qanda_items ?? response?.questions;
+	if (!Array.isArray(items)) return [];
+
+	const answers: NoteAnswer[] = [];
+	for (const [index, item] of items.entries()) {
+		const entry = (item ?? {}) as Record<string, unknown>;
+		const question = parseNoteBlocks(domOf(entry.question));
+		const answer = parseNoteBlocks(domOf(entry.answer));
+		if (question.length === 0 || answer.length === 0) continue;
+
+		const answerer = (entry.answerer ?? {}) as Record<string, unknown>;
+		answers.push({
+			id: typeof entry.id === "number" ? String(entry.id) : `qanda:${index}`,
+			question,
+			answer,
+			author: parseAuthors([(answerer.user ? answerer : { user: answerer }) as Record<string, unknown>])[0],
+		});
+	}
+
+	return answers;
 }

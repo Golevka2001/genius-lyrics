@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Song bio and song Q&A, in tabs beside the lyrics.
+
 ## [0.2.0] - 2026-10-14
 
 ### Added

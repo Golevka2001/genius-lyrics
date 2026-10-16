@@ -5,6 +5,7 @@ import {
 	type Annotation,
 	type GeniusSong,
 	type LyricLine,
+	type NoteAnswer,
 	type SongHit,
 	type SpotifyLyrics,
 } from "./logic.ts";
@@ -22,6 +23,7 @@ export type Transport = {
 	fetchOriginalSong(id: number): Promise<GeniusSong | null>;
 	fetchLyrics(songUrl: string): Promise<LyricLine[]>;
 	fetchSpotifyLyrics(trackUri: string): Promise<SpotifyLyrics | null>;
+	fetchSongQanda(id: number): Promise<NoteAnswer[]>;
 	fetchAnnotations(
 		referentIds: string[],
 		options: { signal?: AbortSignal; onBatch?: (b: AnnotationBatch) => void },
@@ -30,8 +32,11 @@ export type Transport = {
 	warn(message: string, ...rest: unknown[]): void;
 };
 
+export type TrackTab = "annotations" | "bio" | "qa";
+
 export type Panel = {
 	readonly state: PanelState;
+	readonly tab: TrackTab;
 	readonly openLine: number | null;
 	/** Which of the open line's notes the popover shows. Lines carry several. */
 	readonly openNote: number;
@@ -39,6 +44,7 @@ export type Panel = {
 	subscribe(listener: () => void): () => void;
 	load(item: TrackItem | undefined): Promise<void>;
 	retry(): Promise<void>;
+	selectTab(tab: TrackTab): void;
 	toggle(line: number): void;
 	showNote(index: number): void;
 	hover(ids: string[] | null): void;
@@ -46,6 +52,7 @@ export type Panel = {
 
 export function createPanel(transport: Transport): Panel {
 	let state: PanelState = INITIAL_STATE;
+	let tab: TrackTab = "annotations";
 	let openLine: number | null = null;
 	let openNote = 0;
 	let hoverIds: string[] | null = null;
@@ -70,6 +77,7 @@ export function createPanel(transport: Transport): Panel {
 	async function load(item: TrackItem | undefined) {
 		const key = item?.uri ?? "";
 		const mine = ++generation;
+		tab = "annotations";
 		openLine = null;
 		openNote = 0;
 		lastItem = item;
@@ -115,7 +123,10 @@ export function createPanel(transport: Transport): Panel {
 			const geniusArtist = song?.artist || hit.artist || artist;
 			const referentIds = [...new Set(lines.flatMap((line) => line.referentIds))];
 
-			const lyrics = await transport.fetchSpotifyLyrics(key).catch(() => null);
+			const [lyrics, answers] = await Promise.all([
+				transport.fetchSpotifyLyrics(key).catch(() => null),
+				transport.fetchSongQanda(song?.id ?? hit.id).catch(() => []),
+			]);
 			if (mine !== generation) return;
 
 			const timing = lyrics?.synced ? lyrics.lines : undefined;
@@ -128,7 +139,15 @@ export function createPanel(transport: Transport): Panel {
 			const paint = () => {
 				setState({
 					state: "ready",
-					track: buildTrackView({ title: geniusTitle, artist: geniusArtist, lines: timed, notes, settled }),
+					track: buildTrackView({
+						title: geniusTitle,
+						artist: geniusArtist,
+						lines: timed,
+						notes,
+						settled,
+						bio: song?.bio,
+						qa: answers,
+					}),
 				});
 			};
 
@@ -154,6 +173,9 @@ export function createPanel(transport: Transport): Panel {
 		get state() {
 			return state;
 		},
+		get tab() {
+			return tab;
+		},
 		get openLine() {
 			return openLine;
 		},
@@ -174,6 +196,10 @@ export function createPanel(transport: Transport): Panel {
 		},
 		async retry() {
 			await load(lastItem);
+		},
+		selectTab(next) {
+			tab = next;
+			notify();
 		},
 		toggle(line) {
 			if (openLine === line) {

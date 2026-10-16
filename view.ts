@@ -1,6 +1,6 @@
 /** Builds render-ready track state outside the React tree. */
 
-import type { Annotation, LyricLine, LyricRun } from "./logic.ts";
+import type { Annotation, LyricLine, LyricRun, NoteAnswer, NoteBlock } from "./logic.ts";
 import { normalize, sameIds } from "./logic.ts";
 
 export type LineChunk = {
@@ -30,6 +30,8 @@ export type TrackView = {
 	lines: LineView[];
 	annotatedCount: number;
 	annotationCount: number;
+	bio: NoteBlock[];
+	qa: NoteAnswer[];
 	source: "genius" | "none";
 };
 
@@ -39,6 +41,8 @@ export type BuildInput = {
 	lines?: LyricLine[];
 	notes?: Map<string, Annotation[]>;
 	settled?: Set<string>;
+	bio?: NoteBlock[];
+	qa?: NoteAnswer[];
 };
 
 export type ViewState = "loading" | "ready" | "no-genius" | "failed";
@@ -205,7 +209,15 @@ function groupRuns(runs: LyricRun[]): LineChunk[] {
 	return chunks;
 }
 
-export function buildTrackView({ title, artist, lines = [], notes = new Map(), settled = new Set() }: BuildInput) {
+export function buildTrackView({
+	title,
+	artist,
+	lines = [],
+	notes = new Map(),
+	settled = new Set(),
+	bio = [],
+	qa = [],
+}: BuildInput) {
 	const views: LineView[] = lines.map((line, index) => {
 		// Keep every note of each referent, deduped by Genius' id.
 		const attached = line.referentIds.flatMap((id) => notes.get(id) ?? []);
@@ -239,6 +251,8 @@ export function buildTrackView({ title, artist, lines = [], notes = new Map(), s
 		lines: views,
 		annotatedCount,
 		annotationCount,
+		bio,
+		qa,
 		source: views.length > 0 ? "genius" : "none",
 	} satisfies TrackView;
 }

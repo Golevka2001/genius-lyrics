@@ -6,6 +6,7 @@ import {
 	cleanTitleText,
 	isOriginalSong,
 	parseLyricLines,
+	parseQanda,
 	parseReferent,
 	parseSearchResults,
 	parseSong,
@@ -14,6 +15,7 @@ import {
 	type Annotation,
 	type GeniusSong,
 	type LyricLine,
+	type NoteAnswer,
 	type SongHit,
 	type SpotifyLyrics,
 } from "./logic.ts";
@@ -36,12 +38,29 @@ export function buildQueries(title: string, artist: string): string[] {
 	return queries;
 }
 
+type GeniusBody = { response?: unknown; code?: number };
+
+// Genius asks for no credentials, so a client whose own cosmos is still missing
+// or has no token to send falls through to the proxy its pages already need.
+async function geniusGet(url: string): Promise<GeniusBody> {
+	if (client.cosmos) {
+		try {
+			return (await client.cosmos.get(url)) as GeniusBody;
+		} catch (error) {
+			warn("[genius-lyrics] cosmos unavailable, falling back to the CORS proxy", error);
+		}
+	}
+
+	const response = await client.corsProxy.fetch(url);
+	if (!response.ok) return { code: response.status };
+	return { response: await response.json() };
+}
+
 const searchPage = createCache(async (query: string): Promise<SongHit[]> => {
 	const perPage = "30";
 	const url = `${ORIGIN}/api/search/song?${new URLSearchParams({ per_page: perPage, q: query })}`;
-	const body = (await client.cosmos.get(url)) as { response?: unknown; code?: number };
 
-	return parseSearchResults(body);
+	return parseSearchResults(await geniusGet(url));
 }, CACHE);
 
 export async function searchSong(title: string, artist: string): Promise<SongHit[]> {
@@ -53,7 +72,7 @@ export async function searchSong(title: string, artist: string): Promise<SongHit
 }
 
 const songCache = createCache(async (id: number): Promise<GeniusSong | null> => {
-	const body = (await client.cosmos.get(`${ORIGIN}/api/songs/${id}`)) as { response?: unknown; code?: number };
+	const body = await geniusGet(`${ORIGIN}/api/songs/${id}`);
 	throwIfGeniusRefused(body);
 	return parseSong(body);
 }, CACHE);
@@ -73,6 +92,14 @@ export async function fetchOriginalSong(id: number): Promise<GeniusSong | null> 
 	return song;
 }
 
+const qandaCache = createCache(async (id: number): Promise<NoteAnswer[]> => {
+	return parseQanda(await geniusGet(`${ORIGIN}/api/songs/${id}/qanda?per_page=50`));
+}, CACHE);
+
+export function fetchSongQanda(id: number): Promise<NoteAnswer[]> {
+	return qandaCache.get(id);
+}
+
 export async function fetchLyricsPage(songUrl: string): Promise<string> {
 	const response = await client.corsProxy.fetch(songUrl);
 	if (!response.ok) throw new Error(`Genius page failed: ${response.status} ${response.statusText}`);
@@ -90,10 +117,7 @@ export function fetchLyrics(songUrl: string): Promise<LyricLine[]> {
 
 async function fetchAnnotationUncached(referentId: string): Promise<Annotation[]> {
 	try {
-		const body = (await client.cosmos.get(`${ORIGIN}/api/referents/${referentId}`)) as {
-			response?: unknown;
-			code?: number;
-		};
+		const body = await geniusGet(`${ORIGIN}/api/referents/${referentId}`);
 		if (body?.code === 429) throw new Error("Genius rate limit reached (429)");
 		const annotations = parseReferent(body, referentId);
 		if (annotations.length > 0) return annotations;
@@ -102,10 +126,7 @@ async function fetchAnnotationUncached(referentId: string): Promise<Annotation[]
 	}
 
 	try {
-		const body = (await client.cosmos.get(`${ORIGIN}/api/annotations/${referentId}`)) as {
-			response?: unknown;
-			code?: number;
-		};
+		const body = await geniusGet(`${ORIGIN}/api/annotations/${referentId}`);
 		if (body?.code === 429) throw new Error("Genius rate limit reached (429)");
 		return parseReferent(body, referentId);
 	} catch (error) {
@@ -155,7 +176,7 @@ export async function fetchAnnotations(
 				}
 				return;
 			}
-			warn("[genius-lyrics] annotation batch failed", id, String(result.reason));
+			warn("[genius-lyrics] annotation batch failed", id, result.reason);
 		});
 
 		onBatch?.(settledHere);
@@ -182,16 +203,19 @@ export function fetchSpotifyLyrics(trackUri: string): Promise<SpotifyLyrics | nu
 export function detectFailure(error: unknown): string {
 	const text = String((error as { message?: string })?.message ?? error);
 	if (/rate limit|429/i.test(text)) {
-		return "Genius is rate-limiting this client (429). Wait a moment and re-run.";
+		return "Genius is rate-limiting this client (429). Wait a moment and try again.";
+	}
+	if (/timed out/i.test(text)) {
+		return "Genius took too long to answer. Try again.";
 	}
 	if (/Invalid target/i.test(text)) {
-		return "The spicetify daemon is not running, and spicetify's hosted proxy will not carry genius.com. Start the daemon, or point the CORS proxy at your own service.";
+		return "The Spicetify daemon is not running, and Spicetify's hosted proxy will not carry genius.com. Start the daemon, or point the CORS proxy at your own service.";
 	}
 	if (/403|Forbidden|refused/i.test(text)) {
-		return "Genius refused the request (403, anti-bot protection). The proxy's exit address is being blocked by Cloudflare; point the CORS proxy at a service that requests genius.com with browser-like headers.";
+		return "Genius refused the request (403, anti-bot protection). Point the CORS proxy at a service Cloudflare does not block.";
 	}
 	if (/Failed to fetch|NetworkError|load failed/i.test(text)) {
-		return "Could not reach Genius. This needs a CORS proxy: run the spicetify daemon, or configure your own.";
+		return "Could not reach Genius. This needs a CORS proxy: start the daemon, or point the CORS proxy at your own service.";
 	}
 	return text;
 }

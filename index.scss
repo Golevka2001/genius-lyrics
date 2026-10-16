@@ -31,6 +31,7 @@ $bold: 700;
 .gl-panel,
 .gl-head,
 .gl-lines,
+.gl-qa,
 .gl-note-body,
 .gl-status {
 	display: flex;
@@ -49,7 +50,6 @@ $bold: 700;
 }
 
 /* type scale: shared sizes, so components below keep only their own spacing */
-.gl-count,
 .gl-note-authors,
 .gl-note-text,
 .gl-status {
@@ -87,12 +87,52 @@ $bold: 700;
 	transform: scale(0.97);
 }
 
+/* tabs: the row's baseline is the only rule under the heading */
+
+.gl-tabs {
+	display: flex;
+	gap: 24px;
+	border-bottom: 1px solid tint(14);
+}
+
+.gl-tab {
+	/* pull the 2px indicator down over the row's 1px baseline */
+	margin-bottom: -1px;
+	padding: 0 0 8px;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-size: $base;
+	line-height: 1.2;
+	cursor: pointer;
+	opacity: 0.6;
+	transition:
+		opacity 120ms ease,
+		border-color 120ms ease;
+}
+
+.gl-tab:hover {
+	opacity: 1;
+}
+
+.gl-tab-active {
+	opacity: 1;
+	border-bottom-color: currentColor;
+}
+
+.gl-tab-count {
+	margin-left: 5px;
+	font-size: $small;
+	font-variant-numeric: tabular-nums;
+	opacity: 0.7;
+}
+
 /* heading */
 
 .gl-head {
 	gap: 2px;
-	padding-bottom: 10px;
-	border-bottom: 1px solid tint(14);
 }
 
 .gl-title {
@@ -105,17 +145,9 @@ $bold: 700;
 	opacity: 0.7;
 }
 
-.gl-count,
-.gl-hint {
-	opacity: 0.6;
-}
-
-.gl-count {
-	margin-top: 6px;
-}
-
 .gl-hint {
 	margin: 0;
+	opacity: 0.6;
 }
 
 /* lyric lines */
@@ -231,6 +263,12 @@ $bold: 700;
 	border-top: 1px solid tint(14);
 }
 
+/* the question leads the card its answer sits in */
+.gl-qa-q {
+	margin-bottom: 9px;
+	font-weight: $semibold;
+}
+
 /* note-at-a-time switcher, sitting in the footer beside the vote count */
 .gl-note-foot,
 .gl-note-nav {
@@ -332,6 +370,15 @@ $bold: 700;
 	line-height: 1.6;
 }
 
+/* the bio is page copy, not a note: full size, and paragraphs further apart */
+.gl-bio .gl-note-body {
+	gap: 12px;
+}
+
+.gl-bio .gl-note-text {
+	font-size: 1em;
+}
+
 .gl-note-quote {
 	position: relative;
 	margin: 0;
@@ -354,6 +401,8 @@ $bold: 700;
 
 .gl-note-image {
 	display: block;
+	/* the note body stretches its children to full width; the image keeps its own */
+	align-self: flex-start;
 	width: auto;
 	max-width: 100%;
 	max-height: 220px;
@@ -361,19 +410,15 @@ $bold: 700;
 	opacity: 0.92;
 }
 
-.gl-link {
+/* the same underline in every state; the scope is what lets it win */
+.gl-page .gl-link,
+.gl-page .gl-link:hover {
 	color: inherit;
 	cursor: pointer;
 	text-decoration: underline;
-	text-decoration-color: var(--text-base, #fff);
-	text-underline-offset: 2px;
+	text-decoration-color: currentColor;
 	text-decoration-thickness: 1px;
-	opacity: 0.85;
-}
-
-.gl-link:hover {
-	opacity: 1;
-	text-decoration-thickness: 2px;
+	text-underline-offset: 2px;
 }
 
 .gl-note-meta,
@@ -411,13 +456,15 @@ $bold: 700;
 	margin: 0;
 }
 
+/* a pane's status is inside the panel's own padding, so it only adds the space */
+.gl-status.gl-status-pane {
+	max-width: none;
+	padding: 32px 0;
+}
+
 .gl-status-error {
 	color: var(--text-negative, #f25f5c);
 	opacity: 1;
-}
-
-.gl-status-error .gl-hint {
-	color: var(--text-base, #fff);
 }
 
 .gl-retry {
