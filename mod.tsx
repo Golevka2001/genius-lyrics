@@ -365,12 +365,7 @@ function Line({
 					? view.chunks.map((chunk, index) => {
 							const marked = view.annotated && chunk.referentIds !== undefined;
 							const classes = marked
-								? [
-										"gl-anchor",
-										...(chunk.carriesUp ? ["gl-anchor-up"] : []),
-										...(chunk.carriesDown ? ["gl-anchor-down"] : []),
-										...(lit(chunk.referentIds) ? ["gl-anchor-hover"] : []),
-									]
+								? ["gl-anchor", ...(lit(chunk.referentIds) ? ["gl-anchor-hover"] : [])]
 								: [];
 							return h(
 								"span",

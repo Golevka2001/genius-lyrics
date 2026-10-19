@@ -17,6 +17,7 @@
 
 ### Changed
 
+- Annotated runs use a square background instead of rounded corners.
 - Playback following pauses for a moment after the user scrolls.
 
 ## [0.2.0] - 2026-10-14

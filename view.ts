@@ -6,8 +6,6 @@ import { normalize, sameIds } from "./logic.ts";
 export type LineChunk = {
 	runs: LyricRun[];
 	referentIds?: string[];
-	carriesUp?: boolean;
-	carriesDown?: boolean;
 };
 
 export type LineView = {
@@ -205,11 +203,7 @@ function groupRuns(runs: LyricRun[]): LineChunk[] {
 			continue;
 		}
 
-		chunks.push({
-			runs: [run],
-			referentIds: run.referentIds,
-			...(run.referentIds ? { carriesUp: run.carriesUp, carriesDown: run.carriesDown } : {}),
-		});
+		chunks.push({ runs: [run], referentIds: run.referentIds });
 	}
 
 	return chunks;

@@ -208,25 +208,13 @@ $bold: 700;
 }
 
 .gl-anchor {
-	display: inline-block;
+	display: inline;
 	padding: 2px 0;
-	border-radius: 5px;
 	background: tint(11);
 	cursor: pointer;
 	transition:
 		background 120ms ease,
 		color 120ms ease;
-}
-
-/* Round the outer corners of a run so it reads as one block. */
-.gl-anchor-up {
-	border-top-left-radius: 0;
-	border-top-right-radius: 0;
-}
-
-.gl-anchor-down {
-	border-bottom-left-radius: 0;
-	border-bottom-right-radius: 0;
 }
 
 /* The run is marked in JS while its note is hovered or open. */
