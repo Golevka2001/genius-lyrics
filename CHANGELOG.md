@@ -2,7 +2,6 @@
 
 ## [0.3.0] - 2026-10-19
 
-
 ### Added
 
 - Song bio and song Q&A, in tabs beside the lyrics.
