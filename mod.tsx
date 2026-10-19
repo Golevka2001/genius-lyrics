@@ -11,7 +11,7 @@ import {
 	fetchSpotifyLyrics,
 	searchSong,
 } from "./genius.ts";
-import type { Annotation, NoteAnswer, NoteAuthor, NoteBlock, NoteSpan } from "./logic.ts";
+import type { Annotation, AnswerSource, NoteAnswer, NoteAuthor, NoteBlock, NoteSpan } from "./logic.ts";
 import { createPanel, type TrackItem, type TrackTab } from "./panel.ts";
 import { activeLineIndex, hasTimeline, type LineView } from "./view.ts";
 
@@ -269,6 +269,29 @@ function VoteMeta({ votes }: { votes: number | undefined }) {
 	);
 }
 
+function AnswerCredit({ source }: { source: AnswerSource }) {
+	const credit = (text: string, href: string | undefined, className: string) =>
+		href
+			? h("a", {
+					className: `gl-note-author-name ${className} gl-link`,
+					href,
+					target: "_blank",
+					rel: "noopener noreferrer",
+					children: text,
+				})
+			: h("span", { className: `gl-note-author-name ${className}`, children: text });
+
+	return h(
+		"div",
+		{ className: "gl-note-authors" },
+		source.artistImage
+			? h("img", { className: "gl-note-avatar", src: source.artistImage, alt: "", loading: "lazy" })
+			: null,
+		credit(source.artistName, source.artistUrl, ""),
+		source.viaName ? credit(`via ${source.viaName}`, source.viaUrl, "gl-note-via") : null,
+	);
+}
+
 function Answer({ answer }: { answer: NoteAnswer }) {
 	return h(
 		"div",
@@ -277,6 +300,14 @@ function Answer({ answer }: { answer: NoteAnswer }) {
 		h(
 			"div",
 			{ className: "gl-note" },
+			answer.status !== "accepted" || answer.source
+				? h(
+						"div",
+						{ className: "gl-note-head" },
+						h(NoteBadge, { status: answer.status }),
+						answer.source ? h(AnswerCredit, { source: answer.source }) : null,
+					)
+				: null,
 			h(NoteBody, { blocks: answer.answer, fallback: "" }),
 			answer.votes !== undefined
 				? h("div", { className: "gl-note-foot" }, h(VoteMeta, { votes: answer.votes }))

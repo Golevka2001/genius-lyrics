@@ -106,6 +106,16 @@ export type NoteAuthor = {
 
 export type NoteStatus = "verified" | "unreviewed" | "accepted";
 
+// Referents, bios and answers each spell review state differently.
+export function noteStatus(state: unknown, verified: unknown, classification?: unknown): NoteStatus {
+	const label = typeof state === "string" ? state : "";
+	const kind = typeof classification === "string" ? classification : "";
+
+	if (label === "verified" || label === "sourced" || verified === true || kind === "verified") return "verified";
+	if (label === "unreviewed" || label === "pending") return "unreviewed";
+	return "accepted";
+}
+
 export type Annotation = {
 	/** Genius' own id; a referent can carry several. */
 	id: string;
@@ -157,12 +167,9 @@ export function parseReferent(payload: unknown, referentId: string): Annotation[
 		const text = readDom(candidate.body);
 		if (!text) continue;
 
-		const state = typeof candidate.state === "string" ? candidate.state : "";
 		// The fallback endpoint under-reports verification; trust the classification there.
-		const verified =
-			state === "verified" || candidate.verified === true || (!fromReferent && classification === "verified");
-		const unreviewed = state === "unreviewed" || state === "pending";
-		const status: NoteStatus = verified ? "verified" : unreviewed ? "unreviewed" : "accepted";
+		const status = noteStatus(candidate.state, candidate.verified, fromReferent ? undefined : classification);
+		const verified = status === "verified";
 
 		const votes = candidate.votes_total ?? annotation.votes_total;
 
@@ -295,15 +302,8 @@ export function parseSong(payload: unknown): GeniusSong | null {
 	const bioReferent = (song.description_annotation ?? {}) as Record<string, unknown>;
 	const bioAnnotations = (bioReferent.annotations ?? []) as Array<Record<string, unknown>>;
 	const bioAnnotation = (bioAnnotations[0] ?? {}) as Record<string, unknown>;
-	const bioState = typeof bioAnnotation.state === "string" ? bioAnnotation.state : "";
 	const bioVotes = bioAnnotation.votes_total ?? bioReferent.votes_total;
-	const bioClassification = typeof bioReferent.classification === "string" ? bioReferent.classification : "";
-	const bioStatus: NoteStatus =
-		bioState === "verified" || bioAnnotation.verified === true || bioClassification === "verified"
-			? "verified"
-			: bioState === "unreviewed" || bioState === "pending"
-				? "unreviewed"
-				: "accepted";
+	const bioStatus = noteStatus(bioAnnotation.state, bioAnnotation.verified, bioReferent.classification);
 
 	return {
 		id: song.id,
@@ -750,8 +750,33 @@ export type NoteAnswer = {
 	id: string;
 	question: NoteBlock[];
 	answer: NoteBlock[];
+	status: NoteStatus;
+	source?: AnswerSource;
 	votes?: number;
 };
+
+/** A sourced answer quotes the artist, so Genius credits the artist and where they said it. */
+export type AnswerSource = {
+	artistName: string;
+	artistUrl?: string;
+	artistImage?: string;
+	viaName?: string;
+	viaUrl?: string;
+};
+
+function parseAnswerSource(value: unknown): AnswerSource | undefined {
+	const record = (value ?? {}) as Record<string, unknown>;
+	const artist = (record.artist ?? {}) as Record<string, unknown>;
+	if (typeof record.artist_name !== "string") return undefined;
+
+	return {
+		artistName: record.artist_name,
+		artistUrl: typeof artist.url === "string" ? artist.url : undefined,
+		artistImage: typeof artist.image_url === "string" ? artist.image_url : undefined,
+		viaName: typeof record.source_name === "string" ? record.source_name : undefined,
+		viaUrl: typeof record.source_url === "string" ? record.source_url : undefined,
+	};
+}
 
 export function parseQanda(payload: unknown): NoteAnswer[] {
 	throwIfGeniusRefused(payload);
@@ -771,10 +796,15 @@ export function parseQanda(payload: unknown): NoteAnswer[] {
 		if (question.length === 0 || answer.length === 0) continue;
 
 		const votes = answerRecord.votes_total;
+		const source = parseAnswerSource(answerRecord.answer_source);
+
 		answers.push({
 			id: typeof entry.id === "number" ? String(entry.id) : `qanda:${index}`,
 			question,
 			answer,
+			// Only a sourced answer carries a state at all; the rest are plain accepted answers.
+			status: noteStatus(answerRecord.editorial_state, answerRecord.verified, answerRecord.classification),
+			...(source ? { source } : {}),
 			votes: typeof votes === "number" ? votes : undefined,
 		});
 	}

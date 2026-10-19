@@ -9,6 +9,7 @@
 - Loading placeholders for note images.
 - YouTube thumbnails for links in notes.
 - Scrollbar markers for annotated lines.
+- `Verified` labels on Q&A answers.
 
 ### Fixed
 
