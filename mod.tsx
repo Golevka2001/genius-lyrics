@@ -99,6 +99,37 @@ function NoteImage({ src, width, height }: { src: string; width?: number; height
 	);
 }
 
+function NoteVideo({ id }: { id: string }) {
+	const [shown, setShown] = React.useState(false);
+	const settle = () => setShown(true);
+
+	return h(
+		"a",
+		{
+			className: ["gl-note-figure", "gl-note-figure-sized", "gl-note-video", shown ? "gl-note-figure-shown" : ""]
+				.filter(Boolean)
+				.join(" "),
+			href: `https://www.youtube.com/watch?v=${id}`,
+			target: "_blank",
+			rel: "noopener noreferrer",
+			"aria-label": "YouTube video",
+		},
+		h("img", {
+			className: "gl-note-image",
+			src: `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
+			alt: "",
+			loading: "lazy",
+			// A cached thumbnail can finish before React binds onLoad.
+			ref: (node: HTMLImageElement | null) => {
+				if (node?.complete) setShown(true);
+			},
+			onLoad: settle,
+			onError: settle,
+		}),
+		h("span", { className: "gl-note-video-play", "aria-hidden": "true" }),
+	);
+}
+
 function NoteBody({ blocks, fallback }: { blocks: NoteBlock[]; fallback: string }) {
 	if (blocks.length === 0) {
 		return h("div", { className: "gl-note-text", children: fallback });
@@ -118,6 +149,8 @@ function NoteBody({ blocks, fallback }: { blocks: NoteBlock[]; fallback: string 
 					block.lines.map((spans, lineIndex) => h(SpanLine, { key: `${key}-${lineIndex}`, spans })),
 				);
 			}
+
+			if (block.kind === "youtube") return h(NoteVideo, { key, id: block.id });
 
 			return h(NoteImage, { key, src: block.src, width: block.width, height: block.height });
 		}),

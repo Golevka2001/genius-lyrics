@@ -609,7 +609,8 @@ export type NoteSpan = { text: string } | { text: string; href: string };
 export type NoteBlock =
 	| { kind: "paragraph"; spans: NoteSpan[] }
 	| { kind: "quote"; lines: NoteSpan[][] }
-	| { kind: "image"; src: string; width?: number; height?: number };
+	| { kind: "image"; src: string; width?: number; height?: number }
+	| { kind: "youtube"; id: string };
 
 // Read annotation text while preserving inline links and line breaks.
 function readSpans(node: GeniusDomNode | string | undefined | null): NoteSpan[] {
@@ -656,11 +657,28 @@ function spansToText(spans: NoteSpan[]): string {
 // A bio made of nothing but punctuation says no more than an empty one; an image counts.
 function hasProse(blocks: NoteBlock[]): boolean {
 	return blocks.some((block) => {
-		if (block.kind === "image") return true;
+		if (block.kind === "image" || block.kind === "youtube") return true;
 
 		const text = block.kind === "paragraph" ? spansToText(block.spans) : block.lines.map(spansToText).join("\n");
 		return /[\p{L}\p{N}]/u.test(text);
 	});
+}
+
+// YouTube thumbnail card.
+const YOUTUBE_URL =
+	/(?:youtube(?:-nocookie)?\.com\/(?:watch\?(?:[^#]*?&)?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/i;
+
+function youtubeBlock(spans: NoteSpan[]): NoteBlock | null {
+	const text = spansToText(spans).trim();
+	if (!text || /\s/.test(text)) return null;
+	const id = YOUTUBE_URL.exec(text)?.[1];
+	return id ? { kind: "youtube", id } : null;
+}
+
+function pushText(blocks: NoteBlock[], spans: NoteSpan[]): void {
+	const video = youtubeBlock(spans);
+	if (video) blocks.push(video);
+	else if (spansToText(spans)) blocks.push({ kind: "paragraph", spans });
 }
 
 export function parseNoteBlocks(node: GeniusDomNode | string | undefined | null): NoteBlock[] {
@@ -711,13 +729,13 @@ export function parseNoteBlocks(node: GeniusDomNode | string | undefined | null)
 			const images = inner.filter((block) => block.kind === "image");
 			const spans = readSpans(child);
 
-			if (spansToText(spans)) blocks.push({ kind: "paragraph", spans });
+			pushText(blocks, spans);
 			for (const image of images) blocks.push(image);
 			continue;
 		}
 
 		const spans = readSpans(child);
-		if (spansToText(spans)) blocks.push({ kind: "paragraph", spans });
+		pushText(blocks, spans);
 	}
 
 	return blocks;
