@@ -48,7 +48,7 @@ Use the versioned directory generated in `dist/` if the package version changes.
 - [x] Song bio and song Q&A, beside the annotations.
 - [ ] Annotation and lyrics translations.
 - [x] Live annotation count while annotations are loading.
-- [ ] Annotation markers in the scrollbar.
+- [x] Annotation markers in the scrollbar.
 - [x] Time anchors for annotations.
 - [x] Loading indicators for images.
 - [ ] ...

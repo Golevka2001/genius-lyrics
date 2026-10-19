@@ -7,6 +7,7 @@
 - Song bio and song Q&A, in tabs beside the lyrics.
 - Show external links.
 - Loading placeholders for note images.
+- Scrollbar markers for annotated lines.
 
 ## [0.2.0] - 2026-10-14
 

@@ -290,6 +290,7 @@ function Line({
 			]
 				.filter(Boolean)
 				.join(" "),
+			"data-line": view.index,
 			ref: isActive ? activeRef : undefined,
 		},
 		h(
@@ -546,8 +547,83 @@ function Panel() {
 	);
 }
 
+function ScrollMarkers({ pageRef }: { pageRef: React.RefObject<HTMLDivElement> }) {
+	const panel = usePanel();
+	const state = panel.state;
+	const track = state.state === "ready" ? state.track : null;
+	const visible = panel.tab === "annotations" && track !== null;
+	const [marks, setMarks] = React.useState<Array<{ index: number; top: number }>>([]);
+
+	React.useEffect(() => {
+		const scroller = pageRef.current;
+		if (!scroller || !track || !visible) {
+			setMarks([]);
+			return;
+		}
+
+		const measure = () => {
+			const content = scroller.querySelector<HTMLElement>(".gl-lines");
+			if (!content) return;
+
+			const height = scroller.clientHeight;
+			const total = scroller.scrollHeight;
+			if (!height || !total) return;
+
+			const base = scroller.getBoundingClientRect().top + scroller.scrollTop;
+			const next: Array<{ index: number; top: number }> = [];
+			for (const line of track.lines) {
+				if (!line.annotated) continue;
+				const node = content.querySelector<HTMLElement>(`[data-line="${line.index}"]`);
+				if (!node) continue;
+
+				const top = ((node.getBoundingClientRect().top - base) / total) * height;
+				const last = next[next.length - 1];
+				// Overlapping ticks would only show as one, so keep the first.
+				if (last && top - last.top < 3) continue;
+				next.push({ index: line.index, top });
+			}
+			setMarks(next);
+		};
+
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(scroller);
+		const content = scroller.querySelector(".gl-lines");
+		if (content) observer.observe(content);
+		return () => observer.disconnect();
+	}, [pageRef, visible, track]);
+
+	if (!visible || marks.length === 0) return null;
+
+	const jump = (index: number) => {
+		const scroller = pageRef.current;
+		const node = scroller?.querySelector<HTMLElement>(`[data-line="${index}"]`);
+		if (!scroller || !node) return;
+
+		const top = node.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+		scroller.scrollTo({ top: Math.max(0, top - scroller.clientHeight / 2), behavior: "smooth" });
+	};
+
+	return h(
+		"div",
+		{ className: "gl-markers" },
+		marks.map((mark) =>
+			h("button", {
+				key: mark.index,
+				className: "gl-marker",
+				type: "button",
+				style: { top: `${mark.top}px` },
+				tabIndex: -1,
+				"aria-label": "Go to annotation",
+				onClick: () => jump(mark.index),
+			}),
+		),
+	);
+}
+
 function App() {
 	const currentTrack = () => client.player.data?.item as TrackItem | undefined;
+	const pageRef = React.useRef<HTMLDivElement>(null);
 
 	React.useEffect(() => {
 		void panel.load(currentTrack());
@@ -569,7 +645,12 @@ function App() {
 		return () => client.player.removeEventListener("songchange", onChange);
 	}, []);
 
-	return h("div", { className: "gl-page" }, h(Panel, null));
+	return h(
+		"div",
+		{ className: "gl-root" },
+		h("div", { className: "gl-page", ref: pageRef }, h(Panel, null)),
+		h(ScrollMarkers, { pageRef }),
+	);
 }
 
 const ROUTE = "/genius-lyrics";

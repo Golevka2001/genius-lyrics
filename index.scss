@@ -17,6 +17,11 @@ $bold: 700;
 	@return color-mix(in srgb, #{$color} #{$percent * 1%}, transparent);
 }
 
+.gl-root {
+	position: relative;
+	height: 100%;
+}
+
 .gl-page {
 	height: 100%;
 	overflow-y: auto;
@@ -518,6 +523,37 @@ $bold: 700;
 	align-self: flex-start;
 	margin-top: 4px;
 	padding: 5px 14px;
+}
+
+/* scrollbar markers */
+
+.gl-markers {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: 12px;
+	color: var(--text-base, #fff);
+	pointer-events: none;
+}
+
+.gl-marker {
+	position: absolute;
+	right: 3px;
+	width: 4px;
+	height: 2px;
+	padding: 0;
+	border: 0;
+	border-radius: 1px;
+	background: currentColor;
+	opacity: 0.5;
+	cursor: pointer;
+	pointer-events: auto;
+}
+
+.gl-marker:hover,
+.gl-marker:focus-visible {
+	opacity: 1;
 }
 
 /* playback sync */
