@@ -1,6 +1,6 @@
 # Genius Lyrics
 
-View Genius annotated lyrics for the song currently playing in Spotify.
+View Genius annotated lyrics, song bio, and Q&A for the song currently playing in Spotify.
 
 ![Showcase](README.assets/showcase.gif)
 
@@ -27,7 +27,7 @@ git clone https://github.com/Golevka2001/genius-lyrics.git
 cd genius-lyrics
 bun install
 bun run build
-bunx spicetify-kit install dist/genius-lyrics@0.2.0
+bunx spicetify-kit install dist/genius-lyrics@0.3.0
 spicetify apply
 ```
 
@@ -43,14 +43,15 @@ Use the versioned directory generated in `dist/` if the package version changes.
 
 ## Planned
 
-- [x] `Verified`/`Unreviewed` annotation labels, with the author's avatar and name.
-- [ ] Comments and external links.
-- [x] Song bio and song Q&A, beside the annotations.
-- [ ] Annotation and lyrics translations.
-- [x] Live annotation count while annotations are loading.
+- [x] `Verified`/`Unreviewed` labels, with the author's avatar and name.
+- [x] External links.
+- [x] Song bio and Q&A.
 - [x] Annotation markers in the scrollbar.
 - [x] Time anchors for annotations.
 - [x] Loading indicators for images.
+- [x] ~~Live annotation count while annotations are loading~~.
+- [ ] Comments.
+- [ ] Annotation and lyrics translations.
 - [ ] ...
 
 ## Troubleshooting
