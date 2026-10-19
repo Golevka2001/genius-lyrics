@@ -28,8 +28,8 @@ const THUMB_UP_ICON =
 	'<path d="M16.52 21.29H6V8.5l.84-.13a3.45 3.45 0 0 0 1.82-1.09 13.16 13.16 0 0 0 .82-1.85c1.06-2.69 2-4.78 3.52-5.31a2.06 2.06 0 0 1 1.74.17c2.5 1.42 1 5 .16 6.95-.11.27-.25.6-.31.77a.78.78 0 0 0 .6.36h4.1a2.29 2.29 0 0 1 2.37 2.37c0 .82-1.59 5.4-2.92 9.09a2.39 2.39 0 0 1-2.22 1.46zm-8.52-2h8.56a.48.48 0 0 0 .31-.17c1.31-3.65 2.73-7.82 2.79-8.44 0-.22-.1-.32-.37-.32h-4.1A2.61 2.61 0 0 1 12.54 8 4.29 4.29 0 0 1 13 6.46c.45-1.06 1.64-3.89.7-4.43-.52 0-1.3 1.4-2.38 4.14a10 10 0 0 1-1.13 2.38A5.28 5.28 0 0 1 8 10.11zM0 8.4h4.86v12.96H0z"/>' +
 	"</svg>";
 
-// Used to scroll the active lyric line into view.
-let activeRef: { current: HTMLElement | null } | { current: null } = { current: null };
+// User input pauses playback following for this long; new input restarts it.
+const FOLLOW_PAUSE_MS = 5000;
 
 const panel = createPanel({
 	searchSong,
@@ -291,7 +291,6 @@ function Line({
 				.filter(Boolean)
 				.join(" "),
 			"data-line": view.index,
-			ref: isActive ? activeRef : undefined,
 		},
 		h(
 			"div",
@@ -412,10 +411,58 @@ function HeadLink({ className, href, children }: { className: string; href?: str
 	);
 }
 
-function Panel() {
+function Panel({ pageRef }: { pageRef: React.RefObject<HTMLDivElement> }) {
 	const panel = usePanel();
 	const state = panel.state;
 	const [position, setPosition] = React.useState<number | null>(null);
+	const following = React.useRef(true);
+	const pauseTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	const activeLine = React.useRef(-1);
+	const lastTrack = React.useRef<string | null>(null);
+
+	const stopPauseTimer = () => {
+		if (pauseTimer.current === undefined) return;
+		clearTimeout(pauseTimer.current);
+		pauseTimer.current = undefined;
+	};
+
+	const scrollToActive = (index: number) => {
+		const scroller = pageRef.current;
+		const node = scroller?.querySelector<HTMLElement>(`[data-line="${index}"]`);
+		if (!scroller || !node) return;
+
+		const page = scroller.getBoundingClientRect();
+		const rect = node.getBoundingClientRect();
+		const top = scroller.scrollTop + rect.top - page.top - scroller.clientHeight / 2;
+		scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+	};
+
+	// Resuming only moves the page when the active line is out of view.
+	const resumeFollow = () => {
+		following.current = true;
+		stopPauseTimer();
+
+		const index = activeLine.current;
+		if (index < 0) return;
+
+		const scroller = pageRef.current;
+		const node = scroller?.querySelector<HTMLElement>(`[data-line="${index}"]`);
+		if (!scroller || !node) return;
+
+		const page = scroller.getBoundingClientRect();
+		const rect = node.getBoundingClientRect();
+		if (rect.top >= page.top && rect.bottom <= page.bottom) return;
+		scrollToActive(index);
+	};
+
+	const pauseFollow = () => {
+		following.current = false;
+		if (pauseTimer.current !== undefined) clearTimeout(pauseTimer.current);
+		pauseTimer.current = setTimeout(() => {
+			pauseTimer.current = undefined;
+			resumeFollow();
+		}, FOLLOW_PAUSE_MS);
+	};
 
 	// Spotify timing is optional; without it the panel does not follow playback.
 	const timed = state.track ? hasTimeline(state.track.lines) : false;
@@ -442,14 +489,46 @@ function Panel() {
 			: -1;
 
 	React.useEffect(() => {
-		if (activeIndex < 0) return;
-		const node = activeRef.current;
-		if (!node) return;
-		const scroller = node.closest<HTMLElement>(".gl-page");
-		if (!scroller) return;
-		const offset = node.offsetTop - scroller.clientHeight / 2;
-		scroller.scrollTo({ top: Math.max(0, offset), behavior: "smooth" });
+		// The highlight keeps advancing; only the scroll follows this flag.
+		activeLine.current = activeIndex;
+		if (activeIndex < 0 || !following.current) return;
+		scrollToActive(activeIndex);
 	}, [activeIndex]);
+
+	const trackKey =
+		state.state === "ready" && state.track
+			? (state.track.url ?? `${state.track.title}\u0000${state.track.artist}`)
+			: null;
+
+	React.useEffect(() => {
+		if (trackKey === null || trackKey === lastTrack.current) return;
+		lastTrack.current = trackKey;
+
+		// A new track always resumes and catches up to its active line.
+		const paused = !following.current;
+		following.current = true;
+		stopPauseTimer();
+		if (paused && activeLine.current >= 0) scrollToActive(activeLine.current);
+	}, [trackKey]);
+
+	React.useEffect(() => {
+		const root = pageRef.current?.parentElement;
+		if (!root) return;
+
+		// Scrolling, touching, clicking, or pressing a key stops following.
+		const onInput = () => pauseFollow();
+		root.addEventListener("wheel", onInput, { passive: true });
+		root.addEventListener("touchmove", onInput, { passive: true });
+		root.addEventListener("pointerdown", onInput);
+		root.addEventListener("keydown", onInput);
+		return () => {
+			root.removeEventListener("wheel", onInput);
+			root.removeEventListener("touchmove", onInput);
+			root.removeEventListener("pointerdown", onInput);
+			root.removeEventListener("keydown", onInput);
+			stopPauseTimer();
+		};
+	}, [pageRef]);
 
 	if (state.state === "loading") {
 		return h("div", { className: "gl-status", children: "Loading Genius lyrics…" });
@@ -541,7 +620,14 @@ function Panel() {
 		),
 		h(Tabs, {
 			tab: panel.tab,
-			onSelect: (next) => panel.selectTab(next),
+			onSelect: (next) => {
+				panel.selectTab(next);
+				// Returning to the lyrics cancels any pause.
+				if (next === "annotations") {
+					following.current = true;
+					stopPauseTimer();
+				}
+			},
 		}),
 		pane,
 	);
@@ -569,7 +655,9 @@ function ScrollMarkers({ pageRef }: { pageRef: React.RefObject<HTMLDivElement> }
 			const total = scroller.scrollHeight;
 			if (!height || !total) return;
 
-			const base = scroller.getBoundingClientRect().top + scroller.scrollTop;
+			// Viewport coords of the top of the scroll content, so the measured
+			// offset stays the same while a smooth scroll is in flight.
+			const base = scroller.getBoundingClientRect().top - scroller.scrollTop;
 			const next: Array<{ index: number; top: number }> = [];
 			for (const line of track.lines) {
 				if (!line.annotated) continue;
@@ -648,7 +736,7 @@ function App() {
 	return h(
 		"div",
 		{ className: "gl-root" },
-		h("div", { className: "gl-page", ref: pageRef }, h(Panel, null)),
+		h("div", { className: "gl-page", ref: pageRef }, h(Panel, { pageRef })),
 		h(ScrollMarkers, { pageRef }),
 	);
 }
