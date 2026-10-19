@@ -62,6 +62,43 @@ function SpanLine({ spans }: { spans: NoteSpan[] }) {
 	);
 }
 
+function NoteImage({ src, width, height }: { src: string; width?: number; height?: number }) {
+	const [shown, setShown] = React.useState(false);
+	const settle = () => setShown(true);
+	const sized = width !== undefined && height !== undefined;
+
+	const style =
+		sized && !shown
+			? {
+					width: `min(${width}px, 100%, calc(var(--gl-note-image-max) * ${width} / ${height}))`,
+					aspectRatio: `${width} / ${height}`,
+				}
+			: undefined;
+
+	return h(
+		"span",
+		{
+			className: ["gl-note-figure", shown ? "gl-note-figure-shown" : "", sized ? "gl-note-figure-sized" : ""]
+				.filter(Boolean)
+				.join(" "),
+			style,
+		},
+		!shown && !sized ? h("span", { className: "gl-note-text", children: "Loading image…" }) : null,
+		h("img", {
+			className: "gl-note-image",
+			src,
+			alt: "",
+			loading: "lazy",
+			// A cached image can finish before React binds onLoad.
+			ref: (node: HTMLImageElement | null) => {
+				if (node?.complete) setShown(true);
+			},
+			onLoad: settle,
+			onError: settle,
+		}),
+	);
+}
+
 function NoteBody({ blocks, fallback }: { blocks: NoteBlock[]; fallback: string }) {
 	if (blocks.length === 0) {
 		return h("div", { className: "gl-note-text", children: fallback });
@@ -82,7 +119,7 @@ function NoteBody({ blocks, fallback }: { blocks: NoteBlock[]; fallback: string 
 				);
 			}
 
-			return h("img", { key, className: "gl-note-image", src: block.src, alt: "", loading: "lazy" });
+			return h(NoteImage, { key, src: block.src, width: block.width, height: block.height });
 		}),
 	);
 }

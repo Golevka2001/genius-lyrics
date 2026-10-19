@@ -18,7 +18,7 @@ export function cleanTitleText(title: string): string {
 export type GeniusDomNode = {
 	tag?: string;
 	children?: Array<GeniusDomNode | string>;
-	attributes?: Record<string, string>;
+	attributes?: Record<string, string | number>;
 	data?: Record<string, unknown>;
 };
 
@@ -44,7 +44,7 @@ export function domToText(node: GeniusDomNode | string | undefined | null): stri
 		}
 
 		if (tag === "img") {
-			const alt = child.attributes?.alt?.trim();
+			const alt = String(child.attributes?.alt ?? "").trim();
 			parts.push(alt ? `[${alt}]` : "[image]");
 			continue;
 		}
@@ -609,7 +609,7 @@ export type NoteSpan = { text: string } | { text: string; href: string };
 export type NoteBlock =
 	| { kind: "paragraph"; spans: NoteSpan[] }
 	| { kind: "quote"; lines: NoteSpan[][] }
-	| { kind: "image"; src: string };
+	| { kind: "image"; src: string; width?: number; height?: number };
 
 // Read annotation text while preserving inline links and line breaks.
 function readSpans(node: GeniusDomNode | string | undefined | null): NoteSpan[] {
@@ -633,7 +633,7 @@ function readSpans(node: GeniusDomNode | string | undefined | null): NoteSpan[] 
 		}
 
 		const inner = readSpans(child);
-		const href = child.tag === "a" ? (child.attributes?.href ?? "") : "";
+		const href = child.tag === "a" ? String(child.attributes?.href ?? "") : "";
 
 		if (!href) {
 			spans.push(...inner);
@@ -677,8 +677,17 @@ export function parseNoteBlocks(node: GeniusDomNode | string | undefined | null)
 		const tag = child.tag ?? "";
 
 		if (tag === "img") {
-			const src = child.attributes?.src ?? "";
-			if (src) blocks.push({ kind: "image", src });
+			const src = String(child.attributes?.src ?? "");
+			if (!src) continue;
+
+			const width = Number(child.attributes?.width);
+			const height = Number(child.attributes?.height);
+			blocks.push({
+				kind: "image",
+				src,
+				...(Number.isFinite(width) && width > 0 ? { width } : {}),
+				...(Number.isFinite(height) && height > 0 ? { height } : {}),
+			});
 			continue;
 		}
 

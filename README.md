@@ -50,7 +50,7 @@ Use the versioned directory generated in `dist/` if the package version changes.
 - [x] Live annotation count while annotations are loading.
 - [ ] Annotation markers in the scrollbar.
 - [x] Time anchors for annotations.
-- [ ] Loading indicators for images.
+- [x] Loading indicators for images.
 - [ ] ...
 
 ## Troubleshooting
