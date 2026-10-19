@@ -10,6 +10,10 @@
 - YouTube thumbnails for links in notes.
 - Scrollbar markers for annotated lines.
 
+### Fixed
+
+- Lists in bios, Q&A, and notes keep their line breaks.
+
 ### Changed
 
 - Playback following pauses for a moment after the user scrolls.

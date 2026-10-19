@@ -633,6 +633,11 @@ function readSpans(node: GeniusDomNode | string | undefined | null): NoteSpan[] 
 			continue;
 		}
 
+		if (child.tag === "li") {
+			spans.push(...readSpans(child), { text: "\n" });
+			continue;
+		}
+
 		const inner = readSpans(child);
 		const href = child.tag === "a" ? String(child.attributes?.href ?? "") : "";
 
