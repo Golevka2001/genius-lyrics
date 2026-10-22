@@ -12,6 +12,7 @@
 	"dependencies": {
 		"stdlib": "^1.13.0"
 	},
+	"preview": "https://raw.githubusercontent.com/Golevka2001/genius-lyrics/main/README.assets/showcase.gif",
 	"repository": "https://github.com/Golevka2001/genius-lyrics",
 	"license": "GPL-3.0-or-later"
 }
