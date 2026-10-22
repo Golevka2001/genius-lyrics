@@ -5,6 +5,7 @@ import { createCache } from "./cache.ts";
 import {
 	cleanTitleText,
 	isOriginalSong,
+	matchesTitleAndArtist,
 	parseLyricLines,
 	parseQanda,
 	parseReferent,
@@ -28,13 +29,18 @@ const CACHE = { ttl: RESULT_TTL };
 // Try title variants because Spotify and Genius format titles differently.
 export function buildQueries(title: string, artist: string): string[] {
 	const base = cleanTitleText(title);
-	const candidates = [title, base, base.replace(/\s*feat\..*$/i, "").trim()];
+	const contextless = base.replace(/\s+[-–—]\s+.*$/, "").trim();
+	const candidates = [title, base, contextless, base.replace(/\s*feat\..*$/i, "").trim()];
 	const queries: string[] = [];
 	for (const candidate of candidates) {
 		if (!candidate) continue;
 		const query = `${artist} ${candidate}`.trim();
 		if (query && !queries.includes(query)) queries.push(query);
 	}
+
+	const bare = title.trim();
+	if (bare && !queries.includes(bare)) queries.push(bare);
+
 	return queries;
 }
 
@@ -64,11 +70,13 @@ const searchPage = createCache(async (query: string): Promise<SongHit[]> => {
 }, CACHE);
 
 export async function searchSong(title: string, artist: string): Promise<SongHit[]> {
+	const found: SongHit[] = [];
 	for (const query of buildQueries(title, artist)) {
 		const hits = await searchPage.get(query);
-		if (hits.length > 0) return hits;
+		found.push(...hits);
+		if (hits.some((hit) => matchesTitleAndArtist(hit, title, artist))) return hits;
 	}
-	return [];
+	return found;
 }
 
 const songCache = createCache(async (id: number): Promise<GeniusSong | null> => {

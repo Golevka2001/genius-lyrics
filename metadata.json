@@ -1,9 +1,9 @@
 {
 	"name": "genius-lyrics",
 	"kind": "app",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"authors": ["Golevka2001"],
-	"description": "Show lyrics from Genius with the annotations attached to the lines they explain.",
+	"description": "Show Genius lyrics, annotations, song bio, and Q&A.",
 	"entries": {
 		"js": "index.js",
 		"css": "index.css"

@@ -239,41 +239,54 @@ export function parseSearchResults(payload: unknown): SongHit[] {
 		.map((entry) => entry.hit);
 }
 
+type HitScore = {
+	title: number;
+	artist: number;
+};
+
+function scoreHit(hit: SongHit, title: string, artist: string): HitScore {
+	const wanted = normalize(cleanTitleText(title));
+	const wantedRaw = normalize(title);
+	const hitTitle = normalize(hit.title);
+	const hitStripped = normalize(cleanTitleText(hit.title));
+
+	let titleScore = 0;
+	if (wanted && hitTitle) {
+		if (hitTitle === wantedRaw) titleScore = 4;
+		else if (hitStripped === wanted) titleScore = 3;
+		else if (wantedRaw.length >= 3 && (hitTitle.includes(wantedRaw) || wantedRaw.includes(hitTitle)))
+			titleScore = 2;
+	}
+
+	let artistScore = 0;
+	const hitArtist = normalize(hit.artist);
+	for (const name of artist.split(",").map(normalize).filter(Boolean)) {
+		if (hitArtist === name) artistScore += 3;
+		else if (hitArtist.includes(name)) artistScore += 2;
+	}
+
+	return { title: titleScore, artist: artistScore };
+}
+
 export function pickHit(hits: SongHit[], title: string, artist: string): SongHit | null {
 	if (hits.length === 0) return null;
 
-	const wanted = normalize(cleanTitleText(title));
-	const wantedArtists = artist.split(",").map(normalize).filter(Boolean);
-
-	const score = (hit: SongHit) => {
-		let value = 0;
-		const hitTitle = normalize(hit.title);
-		const wantedRaw = normalize(title);
-		const hitStripped = normalize(cleanTitleText(hit.title));
-		if (wanted && hitTitle) {
-			if (hitTitle === wantedRaw) value += 4;
-			else if (hitStripped === wanted) value += 3;
-			else if (wantedRaw.length >= 3 && (hitTitle.includes(wantedRaw) || wantedRaw.includes(hitTitle)))
-				value += 2;
-		}
-		const hitArtist = normalize(hit.artist);
-		for (const name of wantedArtists) {
-			if (hitArtist === name) value += 3;
-			else if (hitArtist.includes(name)) value += 2;
-		}
-		return value;
-	};
-
-	let best = hits[0];
-	let bestScore = score(best);
-	for (const hit of hits.slice(1)) {
-		const value = score(hit);
+	let best: SongHit = hits[0];
+	let bestScore = 0;
+	for (const hit of hits) {
+		const score = scoreHit(hit, title, artist);
+		const value = score.title + score.artist;
 		if (value > bestScore) {
 			best = hit;
 			bestScore = value;
 		}
 	}
 	return bestScore > 0 ? best : null;
+}
+
+export function matchesTitleAndArtist(hit: SongHit, title: string, artist: string): boolean {
+	const score = scoreHit(hit, title, artist);
+	return score.title > 0 && score.artist > 0;
 }
 
 export type GeniusSong = {
