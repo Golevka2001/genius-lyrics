@@ -5,6 +5,7 @@
 ### Fixed
 
 - Tracks whose Spotify artist is a soundtrack name fall back to a title-only search.
+- Song bio, Q&A, and annotations no longer go missing when a request is served by the CORS proxy instead of Spotify's own client.
 
 ## [0.3.0] - 2026-10-19
 

@@ -44,14 +44,14 @@ export function buildQueries(title: string, artist: string): string[] {
 	return queries;
 }
 
-type GeniusBody = { response?: unknown; code?: number };
+type GeniusEnvelope = { response?: unknown; code?: number };
 
 // Genius asks for no credentials, so a client whose own cosmos is still missing
 // or has no token to send falls through to the proxy its pages already need.
-async function geniusGet(url: string): Promise<GeniusBody> {
+async function geniusGet(url: string): Promise<GeniusEnvelope> {
 	if (client.cosmos) {
 		try {
-			return (await client.cosmos.get(url)) as GeniusBody;
+			return await client.cosmos.get(url);
 		} catch (error) {
 			warn("[genius-lyrics] cosmos unavailable, falling back to the CORS proxy", error);
 		}
@@ -59,7 +59,7 @@ async function geniusGet(url: string): Promise<GeniusBody> {
 
 	const response = await client.corsProxy.fetch(url);
 	if (!response.ok) return { code: response.status };
-	return { response: await response.json() };
+	return await response.json();
 }
 
 const searchPage = createCache(async (query: string): Promise<SongHit[]> => {
